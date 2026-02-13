@@ -1,0 +1,164 @@
+<div id="lobby" style="display: block; text-align: center; margin-top: 50px;">
+    <h1>Watch Party</h1>
+    <button onclick="createRoom()" style="padding: 15px 30px; font-size: 1.2rem; cursor: pointer;">
+        Create New Room
+    </button>
+</div>
+
+<div id="room-interface" style="display: none;">
+    <h2 id="room-display"></h2>
+    <video id="myVideo" controls width="100%">
+        <source src="media/movie.mp4" type="video/mp4">
+    </video>
+</div>
+
+<script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+<script>
+  const urlParams = new URLSearchParams(window.location.search);
+  const roomId = urlParams.get('room');
+
+  const lobbyDiv = document.getElementById('lobby');
+  const roomDiv = document.getElementById('room-interface');
+  const roomDisplay = document.getElementById('room-display');
+
+  if (roomId) {
+      // We are in a room!
+      lobbyDiv.style.display = 'none';
+      roomDiv.style.display = 'block';
+      roomDisplay.innerText = `Room ID: ${roomId}`;
+      
+      // Connect to socket and pass the roomId
+      const socket = io({ query: { roomId: roomId } });
+      setupSocketLogic(socket); // Move your previous socket.on logic into this function
+  } else {
+      // We are in the lobby
+      lobbyDiv.style.display = 'block';
+      roomDiv.style.display = 'none';
+  }
+
+  function createRoom() {
+      // Generate a random 6-character string
+      const newId = Math.random().toString(36).substring(2, 8);
+      // Redirect the user to the same page but with the room ID in the URL
+      window.location.search = `?room=${newId}`;
+  }
+
+  function setupSocketLogic(socket) {
+    const video = document.getElementById('myVideo');
+    
+    // State Guards
+    let internalChange = false;
+    let isScrubbing = false;
+    let seekTimeout;
+    let lastOutboundTime = 0;
+    let lastThrottleEmit = 0;
+    const SYNC_THRESHOLD = 1.5; // Slightly higher for mobile stability
+
+    // Helper to send events and mark the time we sent them
+    const emitSync = (type, time) => {
+        lastOutboundTime = Date.now();
+        socket.emit('sync-event', { type, time });
+    };
+
+    // --- 1. OUTBOUND: User Interaction ---
+
+    video.addEventListener('play', () => {
+        if (internalChange) return;
+        emitSync('play', video.currentTime);
+    });
+
+    video.addEventListener('pause', () => {
+        if (internalChange || isScrubbing) return;
+
+        clearTimeout(seekTimeout);
+        seekTimeout = setTimeout(() => {
+            if (!isScrubbing && !internalChange) emitSync('pause', video.currentTime);
+        }, 150); 
+    });
+
+    video.addEventListener('seeking', () => {
+        if (internalChange) return;
+        isScrubbing = true;
+        clearTimeout(seekTimeout);
+        
+        // Throttle scrubbing updates to once every 250ms
+        const now = Date.now();
+        if (now - lastThrottleEmit > 250) {
+            emitSync('seeking', video.currentTime);
+            lastThrottleEmit = now;
+        }
+    });
+
+    video.addEventListener('seeked', () => {
+        if (internalChange) return;
+        isScrubbing = false;
+        emitSync('seeking', video.currentTime);
+    });
+
+    setInterval(() => {
+        if (!video.paused && !internalChange && !isScrubbing) {
+            emitSync('heartbeat', video.currentTime);
+        }
+    }, 3000);
+
+    // --- 2. INBOUND: Sync Logic ---
+
+    socket.on('apply-sync', (data) => {
+      const now = Date.now();
+      
+      // CONFLICT RESOLVER:
+      // Only block HEARTBEATS if we just interacted. 
+      // If it's a hard 'play' or 'pause' from a friend, we should listen sooner.
+      if (now - lastOutboundTime < 500 && data.type === 'heartbeat') return;
+      if (now - lastOutboundTime < 200) return; // Minimum "cool down" to prevent loops
+
+      const timeDiff = Math.abs(video.currentTime - data.time);
+
+        if (data.type !== 'heartbeat' || timeDiff > SYNC_THRESHOLD) {
+            if (video.readyState >= 1) { 
+                executeSync(data);
+            } else {
+                video.addEventListener('loadedmetadata', () => executeSync(data), { once: true });
+            }
+        }
+    });
+
+    function executeSync(data) {
+      internalChange = true;
+      
+      if (data.type === 'heartbeat') {
+        
+        video.currentTime = data.time;
+        setTimeout(() => { internalChange = false; }, 100);
+        return;
+      }
+
+      // Hard pause
+      if (data.type === 'pause'){
+        video.pause();
+        video.currentTime = data.time;
+        setTimeout(() => { internalChange = false; }, 300);
+        return;
+      }
+
+
+      video.currentTime = data.time;
+      // Wait for hardware to finish the jump
+      const onSeeked = () => {
+        if (data.type === 'play' || data.type === 'seeking') {
+          video.play().catch(() => console.log("Waiting for user tap..."));
+        }
+        setTimeout(() => { internalChange = false; }, 300);
+      };
+
+      video.addEventListener('seeked', onSeeked, { once: true });
+    }
+  }
+
+  function createRoom() {
+      // Generate a random 6-character string
+      const newId = Math.random().toString(36).substring(2, 8);
+      // Redirect the user to the same page but with the room ID in the URL
+      window.location.search = `?room=${newId}`;
+  }
+</script>
