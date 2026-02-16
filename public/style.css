@@ -1,0 +1,113 @@
+#join-gate {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: #1a1a1a;
+    padding: 40px;
+    border-radius: 8px;
+    margin-top: 20px;
+}
+
+#video-wrapper {
+    background-color: black;
+    position: relative;
+    width: 100%;
+    max-width: 800px;
+    aspect-ratio: 16 / 9;
+    margin: auto;
+    overflow: hidden;
+    display: none;
+    align-items: center;
+    justify-content: center;
+}
+
+#myVideo, .video-overlay {
+    display: none; /* Hide until Join button is clicked */
+}
+
+.video-overlay {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: linear-gradient(transparent, rgba(0, 0, 0, 0.8));
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 15px;
+    gap: 15px;
+    opacity: 0;
+    transition: opacity 0.5s;
+    z-index: 10;
+    pointer-events: auto;
+}
+
+.hide-controls {
+    opacity: 0 !important;
+    cursor: none; /* Also hide the mouse cursor for a better movie experience */
+}
+
+#video-wrapper:hover .video-overlay {
+    opacity: 1;
+}
+#myVideo {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+}
+
+.progress-container {
+    flex-grow: 1; /* Takes up all available space between buttons */
+    height: 8px;
+    background: rgba(255, 255, 255, 0.3);
+    border-radius: 4px;
+    margin: 0 15px;
+    cursor: default;
+    overflow: visible;
+    position: relative;
+}
+
+.mouse-interact {
+    cursor: pointer !important;
+}
+
+.progress-filled {
+    height: 100%;
+    width: 0%; /* Starts at 0 */
+    background: #ff0000; /* Red like YouTube */
+    pointer-events: none;
+}
+
+.time-text {
+    color: white;
+    font-family: sans-serif;
+    font-size: 14px;
+    margin: 0 10px;
+    white-space: nowrap;
+}
+
+.host-only {
+    display: none;
+}
+
+.show-host {
+    display: block !important;
+}
+
+.control-btn {
+    transition: transform 0.1s ease;
+}
+
+.control-btn:active {
+    transform: scale(0.9); /* Subtle "click" effect */
+}
+
+.control-btn svg {
+    display: block;
+    transition: transform 0.2s;
+}
+
+.control-btn:hover svg {
+    transform: scale(1.1);
+    color: #ff0000; /* Red hover effect */
+}

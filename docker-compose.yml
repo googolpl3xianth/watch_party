@@ -1,19 +1,25 @@
 services:
   sync-server:
     build: ./server
+    security_opt:
+      - no-new-privileges:true
   web-server:
     image: nginxinc/nginx-unprivileged:alpine
     ports:
-      - "80:8080"
+      - "0.0.0.0:8080:8080"
     volumes:
       - ./public:/usr/share/nginx/html
       - ./nginx.conf:/etc/nginx/nginx.conf:ro
       - ./auth:/etc/nginx/auth:ro 
+    security_opt:
+      - no-new-privileges:true
     depends_on:
       - sync-server
     restart: unless-stopped
   duckdns:
     image: lscr.io/linuxserver/duckdns:latest
+    security_opt:
+      - no-new-privileges:true
     environment:
       - PUID=1000 
       - PGID=1000

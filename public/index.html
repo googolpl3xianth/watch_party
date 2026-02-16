@@ -1,3 +1,7 @@
+<head>
+	<link rel="stylesheet" href="style.css">
+</head>
+
 <div id="lobby" style="display: block; text-align: center; margin-top: 50px;">
     <h1>Watch Party</h1>
     <button onclick="createRoom()" style="padding: 15px 30px; font-size: 1.2rem; cursor: pointer;">
@@ -6,159 +10,396 @@
 </div>
 
 <div id="room-interface" style="display: none;">
-    <h2 id="room-display"></h2>
-    <video id="myVideo" controls width="100%">
-        <source src="media/movie.mp4" type="video/mp4">
-    </video>
+  	<h2 id="room-display"></h2>
+	<div id="join-gate">
+		<button id="join-btn" style="padding: 10px 20px; cursor: pointer; ">Join & Sync</button>
+	</div>
+
+  	<div id="video-wrapper" style="position: relative; width: 100%; max-width: 800px; margin: auto;">
+      	<video id="myVideo" width="100%">
+          	<source src="media/movie.mp4" type="video/mp4">
+      	</video>
+
+      	<div id="custom-controls" class="video-overlay">
+			<button onclick="togglePlay()" class="control-btn host-only" id="play-pause-btn">
+				<svg viewBox="0 0 24 24" width="24" height="24">
+					<path id="play-pause-path" fill="currentColor" d="M8 5v14l11-7z"/> 
+				</svg>
+			</button>
+
+			<div class="progress-container">
+        		<div id="progress-bar" class="progress-filled"></div>
+    		</div>
+
+          	<button onclick="toggleFullscreen()" class="control-btn">
+				<svg viewBox="0 0 24 24" width="24" height="24">
+					<path fill="currentColor" d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/>
+				</svg>
+			</button>
+
+			<span id="time-display" class="time-text">00:00 / 00:00</span>
+
+          	<div class="volume-container">
+              	<span>🔊</span>
+              	<input type="range" min="0" max="1" step="0.1" value="1" oninput="setVolume(this.value)">
+          	</div>
+      	</div>
+  	</div>
 </div>
 
 <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
 <script>
-  const urlParams = new URLSearchParams(window.location.search);
-  const roomId = urlParams.get('room');
-
-  const lobbyDiv = document.getElementById('lobby');
-  const roomDiv = document.getElementById('room-interface');
-  const roomDisplay = document.getElementById('room-display');
-
-  if (roomId) {
-      // We are in a room!
-      lobbyDiv.style.display = 'none';
-      roomDiv.style.display = 'block';
-      roomDisplay.innerText = `Room ID: ${roomId}`;
-      
-      // Connect to socket and pass the roomId
-      const socket = io({ query: { roomId: roomId } });
-      setupSocketLogic(socket); // Move your previous socket.on logic into this function
-  } else {
-      // We are in the lobby
-      lobbyDiv.style.display = 'block';
-      roomDiv.style.display = 'none';
-  }
-
-  function createRoom() {
-      // Generate a random 6-character string
-      const newId = Math.random().toString(36).substring(2, 8);
-      // Redirect the user to the same page but with the room ID in the URL
-      window.location.search = `?room=${newId}`;
-  }
-
-  function setupSocketLogic(socket) {
+    const urlParams = new URLSearchParams(window.location.search);
+    const roomId = urlParams.get('room');
+    const socket = io();
+    const lobbyDiv = document.getElementById('lobby');
+    const roomDiv = document.getElementById('room-interface');
+    const roomDisplay = document.getElementById('room-display');
+	const joinGate = document.getElementById('join-gate');
+    const joinBtn = document.getElementById('join-btn');
     const video = document.getElementById('myVideo');
-    
-    // State Guards
-    let internalChange = false;
-    let isScrubbing = false;
-    let seekTimeout;
-    let lastOutboundTime = 0;
-    let lastThrottleEmit = 0;
-    const SYNC_THRESHOLD = 1.5; // Slightly higher for mobile stability
+	const wrapper = document.getElementById('video-wrapper');
+	const controls = document.querySelector('.video-overlay');
+	const progressBar = document.getElementById('progress-bar');
+	const progressContainer = document.querySelector('.progress-container');
+	const timeDisplay = document.getElementById('time-display');
+	const iconPath = document.getElementById('play-pause-path');
 
-    // Helper to send events and mark the time we sent them
-    const emitSync = (type, time) => {
-        lastOutboundTime = Date.now();
-        socket.emit('sync-event', { type, time });
-    };
+	let mousedown = false;
+	let wasPlayingBeforeScrub = false;
+	let logicInitialized = false;
+	let sync_perm = false;
 
-    // --- 1. OUTBOUND: User Interaction ---
+    // --- ROOM MANAGEMENT ---
 
-    video.addEventListener('play', () => {
-        if (internalChange) return;
-        emitSync('play', video.currentTime);
-    });
-
-    video.addEventListener('pause', () => {
-        if (internalChange || isScrubbing) return;
-
-        clearTimeout(seekTimeout);
-        seekTimeout = setTimeout(() => {
-            if (!isScrubbing && !internalChange) emitSync('pause', video.currentTime);
-        }, 150); 
-    });
-
-    video.addEventListener('seeking', () => {
-        if (internalChange) return;
-        isScrubbing = true;
-        clearTimeout(seekTimeout);
-        
-        // Throttle scrubbing updates to once every 250ms
-        const now = Date.now();
-        if (now - lastThrottleEmit > 250) {
-            emitSync('seeking', video.currentTime);
-            lastThrottleEmit = now;
-        }
-    });
-
-    video.addEventListener('seeked', () => {
-        if (internalChange) return;
-        isScrubbing = false;
-        emitSync('seeking', video.currentTime);
-    });
-
-    setInterval(() => {
-        if (!video.paused && !internalChange && !isScrubbing) {
-            emitSync('heartbeat', video.currentTime);
-        }
-    }, 3000);
-
-    // --- 2. INBOUND: Sync Logic ---
-
-    socket.on('apply-sync', (data) => {
-      const now = Date.now();
-      
-      // CONFLICT RESOLVER:
-      // Only block HEARTBEATS if we just interacted. 
-      // If it's a hard 'play' or 'pause' from a friend, we should listen sooner.
-      if (now - lastOutboundTime < 500 && data.type === 'heartbeat') return;
-      if (now - lastOutboundTime < 200) return; // Minimum "cool down" to prevent loops
-
-      const timeDiff = Math.abs(video.currentTime - data.time);
-
-        if (data.type !== 'heartbeat' || timeDiff > SYNC_THRESHOLD) {
-            if (video.readyState >= 1) { 
-                executeSync(data);
-            } else {
-                video.addEventListener('loadedmetadata', () => executeSync(data), { once: true });
-            }
-        }
-    });
-
-    function executeSync(data) {
-      internalChange = true;
-      
-      if (data.type === 'heartbeat') {
-        
-        video.currentTime = data.time;
-        setTimeout(() => { internalChange = false; }, 100);
-        return;
-      }
-
-      // Hard pause
-      if (data.type === 'pause'){
-        video.pause();
-        video.currentTime = data.time;
-        setTimeout(() => { internalChange = false; }, 300);
-        return;
-      }
-
-
-      video.currentTime = data.time;
-      // Wait for hardware to finish the jump
-      const onSeeked = () => {
-        if (data.type === 'play' || data.type === 'seeking') {
-          video.play().catch(() => console.log("Waiting for user tap..."));
-        }
-        setTimeout(() => { internalChange = false; }, 300);
-      };
-
-      video.addEventListener('seeked', onSeeked, { once: true });
+    function createRoom() {
+        socket.emit('request-create-room');
     }
-  }
 
-  function createRoom() {
-      // Generate a random 6-character string
-      const newId = Math.random().toString(36).substring(2, 8);
-      // Redirect the user to the same page but with the room ID in the URL
-      window.location.search = `?room=${newId}`;
-  }
+    socket.on('room-created', (newId) => {
+        window.location.search = `?room=${newId}`;
+    });
+
+    if (roomId) {
+        socket.emit('join-room', roomId);
+
+        socket.on('join-success', (permission) => {
+            lobbyDiv.style.display = 'none';
+            roomDiv.style.display = 'block';
+            roomDisplay.innerText = `Room ID: ${roomId} ${permission}`;
+
+			const hostElements = document.querySelectorAll('.host-only');
+			sync_perm = (permission === 'host' || permission === 'admin');
+			if (sync_perm) {
+				hostElements.forEach(el => {
+					el.classList.add('show-host');
+					el.style.setProperty('display', 'block', 'important');
+				});
+				progressContainer.classList.add('mouse-interact');
+				console.log("Host permissions activated: showing controls.");
+			}
+			else{
+				hostElements.forEach(el => el.style.display = 'none');
+			}
+            setupSocketLogic(socket); 
+        });
+
+        socket.on('join-error', (msg) => {
+            alert(msg);
+            window.location.search = ""; // Redirect back to lobby
+        });
+    } else {
+        // We are in the lobby
+        lobbyDiv.style.display = 'block';
+        roomDiv.style.display = 'none';
+    }
+
+    function setupSocketLogic(socket) {
+		if (logicInitialized) {
+			// Update the internal permission variable if your logic uses one
+			return; 
+		}
+		logicInitialized = true;
+		let idleTimer;
+		video.controls = false;
+
+        joinBtn.onclick = () => {
+            joinGate.style.display = 'none';
+            
+			wrapper.style.display = 'block';
+			video.style.display = 'block';
+    		controls.style.display = 'flex';
+
+            video.play().then(() => {
+				video.pause();
+				console.log("Audio context unlocked.");
+                socket.emit('request-sync');
+            }).catch(e => {
+				video.muted = true;
+				video.play().then(() => {
+					socket.emit('request-sync');
+				});
+				console.log("Fallback: Muted autoplay triggered.");
+			});
+        };
+        
+        // State Guards
+        let internalChange = false;
+        let isScrubbing = false;
+        let seekTimeout;
+        let lastOutboundTime = 0;
+        let lastThrottleEmit = 0;
+        const SYNC_THRESHOLD = 1.5; // Slightly higher for mobile stability
+
+        // Helper to send events and mark the time we sent them
+        const emitSync = (type, time) => {
+            if (!sync_perm) return;
+            lastOutboundTime = Date.now();
+            socket.emit('sync-event', { type, time });
+        };
+
+        // --- 1. OUTBOUND: Host Interaction ---
+		video.addEventListener('play', () => {
+			if (!sync_perm || internalChange) return;
+			emitSync('play', video.currentTime);
+		});
+
+		video.addEventListener('pause', () => {
+			if (!sync_perm) return;
+			emitSync('pause', video.currentTime);
+		});
+
+		progressContainer.addEventListener('mousedown', (e) => {
+			if(!sync_perm) return;
+			mousedown = true;
+			wasPlayingBeforeScrub = !video.paused;
+			video.pause();
+			emitSync('pause', video.currentTime);
+			scrub(e);
+		});
+
+		window.addEventListener('mouseup', () => {
+			if (sync_perm && mousedown) {
+				mousedown = false;
+				if(wasPlayingBeforeScrub) {
+					video.play(); 
+					emitSync('play', video.currentTime);
+				}
+				else{
+					emitSync('pause', video.currentTime);
+				}
+			}
+		});
+		window.addEventListener('mousemove', (e) => {
+			if (sync_perm && mousedown){
+				scrub(e);
+				const now = Date.now();
+				if (now - lastThrottleEmit > 150) { 
+					emitSync('seeking', video.currentTime);
+					lastThrottleEmit = now;
+				}
+			}
+		});
+
+		setInterval(() => {
+			if (sync_perm && !video.paused && !internalChange && !isScrubbing) {
+				emitSync('heartbeat', video.currentTime);
+			}
+		}, 3000);
+
+        // --- 2. INBOUND: Everyone ---
+
+		video.addEventListener('play', () => {
+			iconPath.setAttribute('d', PAUSE_PATH);
+		});
+
+		video.addEventListener('pause', () => {
+			iconPath.setAttribute('d', PLAY_PATH);
+		});
+
+		window.addEventListener('keydown', (e) => {
+			// Prevent scrolling when pressing space or arrows
+			if ([" ", "ArrowLeft", "ArrowRight"].includes(e.key)) {
+				e.preventDefault();
+			}
+
+			// Only allow the Host to skip ahead/back
+			if(sync_perm){
+				if (e.key === " " || e.code === "Space") {
+					togglePlay();
+				} else if (e.key === "ArrowRight") {
+					video.currentTime += 5; // Skip 5 seconds
+					emitSync('seeking', video.currentTime);
+				} else if (e.key === "ArrowLeft") {
+					video.currentTime -= 5;
+					emitSync('seeking', video.currentTime);
+				}
+			}
+			if (e.key === "f"){
+				toggleFullscreen();
+			}
+			else if(e.key === "m"){
+				video.muted = !video.muted;
+			}
+		});
+
+		video.addEventListener('timeupdate', () => {
+			if (video.duration) {
+				const percentage = (video.currentTime / video.duration) * 100;
+				progressBar.style.width = percentage + '%';
+
+				const current = formatTime(video.currentTime);
+				const total = formatTime(video.duration);
+				timeDisplay.innerText = `${current} / ${total}`;
+			}
+		});
+
+		wrapper.addEventListener('mousemove', resetIdleTimer);
+		wrapper.addEventListener('mousedown', resetIdleTimer);
+
+		socket.on('switch-permission', (permission) =>{
+			const hostElements = document.querySelectorAll('.host-only');
+			sync_perm = (permission === 'host' || permission === 'admin');
+			roomDisplay.innerText = `Room ID: ${roomId} ${permission}`;
+			if (sync_perm){
+				hostElements.forEach(el => {
+					el.classList.add('show-host');
+					el.style.setProperty('display', 'block', 'important');
+				});
+				progressContainer.classList.add('mouse-interact');
+				console.log("Host permissions activated: showing controls.");
+			}
+			else{
+				hostElements.forEach(el => el.style.display = 'none');
+			}
+		});
+
+        socket.on('apply-sync', (data) => {
+            const now = Date.now();
+            if (now - lastOutboundTime < 500 && data.type === 'heartbeat') return;
+            if (now - lastOutboundTime < 200) return; // Minimum "cool down" to prevent loops
+
+            const timeDiff = Math.abs(video.currentTime - data.time);
+
+            if (data.type !== 'heartbeat' || timeDiff > SYNC_THRESHOLD) {
+                if (video.readyState >= 1) { 
+                    executeSync(data);
+                } else {
+                    video.addEventListener('loadedmetadata', () => executeSync(data), { once: true });
+                }
+            }
+        });
+
+        function executeSync(data) {
+			internalChange = true;
+
+			if (video.readyState >= 1) {
+				video.currentTime = data.time;
+			} else {
+				video.addEventListener('loadedmetadata', () => {
+					video.currentTime = data.time;
+				}, { once: true });
+			}
+			
+			if (data.type === 'heartbeat') {
+				video.currentTime = data.time;
+				setTimeout(() => { internalChange = false; }, 100);
+				return;
+			}
+
+			// Hard pause
+			if (data.type === 'pause'){
+				video.pause();
+				video.currentTime = data.time;
+				setTimeout(() => { internalChange = false; }, 300);
+				return;
+			}
+
+			if (data.type === 'play') {
+				// If the video is still loading (readyState < 3), wait for it to be ready to play
+				if (video.readyState >= 3) {
+					video.play().catch(e => console.log("Playback failed:", e));
+				} else {
+					const playWhenReady = () => {
+						video.play().catch(e => console.log("Delayed play failed:", e));
+						video.removeEventListener('canplay', playWhenReady);
+					};
+					video.addEventListener('canplay', playWhenReady);
+				}
+			} else {
+				video.pause();
+			}
+			setTimeout(() => { internalChange = false; }, 300);
+        }
+
+		function resetIdleTimer() {
+			controls.classList.remove('hide-controls');
+			wrapper.style.cursor = 'default';
+
+			clearTimeout(idleTimer);
+
+			idleTimer = setTimeout(() => {
+				if (!video.paused) {
+					controls.classList.add('hide-controls');
+					wrapper.style.cursor = 'none';
+				}
+			}, 2000);
+		}
+    }
+
+	// Video Custom Controls
+
+    function toggleFullscreen() {
+        const wrapper = document.getElementById('video-wrapper');
+        if (!document.fullscreenElement) {
+            wrapper.requestFullscreen().catch(err => {
+				console.error(`Error: ${err.message}`);
+			});
+        } else if (video.webkitRequestFullscreen) { /* Safari */
+            document.exitFullscreen();
+        }
+    }
+
+    function setVolume(val) {
+        const video = document.getElementById('myVideo');
+        video.volume = val;
+    }
+
+	const PLAY_PATH = "M8 5v14l11-7z";
+	const PAUSE_PATH = "M6 19h4V5H6v14zm8-14v14h4V5h-4z";
+	function togglePlay() {
+		if (roomDisplay.innerText.includes('(Guest)')) {
+			console.log("Guests cannot control playback.");
+			return;
+		}
+		if (video.paused) {
+			video.play();
+		} else {
+			video.pause();
+		}
+	}
+
+	function scrub(e) {
+		const rect = progressContainer.getBoundingClientRect();
+		const x = e.clientX - rect.left;
+		const scrubTime = (x / progressContainer.offsetWidth) * video.duration;
+		
+		if (!isNaN(scrubTime)) {
+			video.currentTime = scrubTime;
+		}
+	}
+
+	function formatTime(seconds) {
+		const h = Math.floor(seconds / 3600);
+		const m = Math.floor((seconds % 3600) / 60);
+		const s = Math.floor(seconds % 60);
+		
+		const parts = [
+			h > 0 ? h : null,
+			(h > 0 && m < 10 ? "0" : "") + m,
+			(s < 10 ? "0" : "") + s
+		].filter(p => p !== null);
+		
+		return parts.join(":");
+	}
 </script>
