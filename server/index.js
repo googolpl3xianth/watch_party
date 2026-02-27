@@ -5,10 +5,40 @@ const io = require('socket.io')(3000, {
     }
 });
 
-const activeRooms = {}; // Memory to store { roomId: { time, isPaused, users: {username, permisionlv} } }
+const activeRooms = {}; // Memory to store { roomId: { video_name, time, isPaused, users: {username, permisionlv} } }
+
+const fs = require('fs');
+const path = require('path');
+function getVideoList(dir = '/videos', allFiles = []) {
+    try {
+        const files = fs.readdirSync(dir, { withFileTypes: true });
+
+        for (const file of files) {
+            const fullPath = path.join(dir, file.name);
+            
+            if (file.isDirectory()) {
+                getVideoList(fullPath, allFiles);
+            } else {
+                if (file.name === 'master.m3u8') {
+                    const folderName = path.basename(path.dirname(fullPath));
+                    const relativePath = path.posix.join(folderName, 'master.m3u8');
+                    allFiles.push(relativePath);
+                }
+            }
+        }
+        return allFiles;
+    } catch (err) {
+        console.error("Recursive search error:", err);
+        return allFiles;
+    }
+}
 
 io.on('connection', (socket) => {
     let currentRoomId = null;
+
+    const list = getVideoList();
+    console.log(`Sending recursive list: ${list}`);
+    socket.emit('video-list', list);
 
     socket.on('request-create-room', () => {
         const newID = Math.random().toString(36).substring(2, 8);
@@ -34,18 +64,24 @@ io.on('connection', (socket) => {
                     users[socket.id] = 'guest';
                 }
             }
-
-            console.log(`Joined room, Roomid: ${currentRoomId} isPaused: ${activeRooms[roomId].isPaused} currentTime: ${activeRooms[roomId].currentTime}`);
-
-            socket.emit('apply-sync', { 
-                type: activeRooms[roomId].isPaused ? 'pause' : 'play', 
-                time: activeRooms[roomId].currentTime 
-            });
-
             console.log(`Roomid: ${currentRoomId} User Joined: ${socket.id}`);
             socket.emit('join-success', users[socket.id]);
         } else {
             socket.emit('join-error', 'This room does not exist or has expired.');
+        }
+    });
+
+    socket.on('request-video-change', (filename) => {
+        if (!currentRoomId || !activeRooms[currentRoomId]) return;
+        activeRooms[currentRoomId].video_name = filename;
+        io.to(currentRoomId).emit('load-new-video', filename);
+    });
+
+    socket.on('request-load-video', () => {
+        if (!currentRoomId || !activeRooms[currentRoomId]) return;
+        if (activeRooms[currentRoomId].video_name) {
+            console.log(`Sending current video to late joiner in ${currentRoomId}`);
+            socket.emit('load-new-video', activeRooms[currentRoomId].video_name);
         }
     });
 

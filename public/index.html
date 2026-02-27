@@ -2,6 +2,8 @@
 	<link rel="stylesheet" href="style.css">
 </head>
 
+<script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+
 <div id="lobby" style="display: block; text-align: center; margin-top: 50px;">
     <h1>Watch Party</h1>
     <button onclick="createRoom()" style="padding: 15px 30px; font-size: 1.2rem; cursor: pointer;">
@@ -11,14 +13,21 @@
 
 <div id="room-interface" style="display: none;">
   	<h2 id="room-display"></h2>
-	<div id="join-gate">
-		<button id="join-btn" style="padding: 10px 20px; cursor: pointer; ">Join & Sync</button>
+
+	<div id="media-controls" class = "host-only">
+		<label for="video-select">Choose a Movie:</label>
+		<select id="video-select">
+			<option value="">-- Select a Video --</option>
+		</select>
+		<button onclick="requestChange()">Load for Everyone</button>
+	</div>
+
+	<div id="join-gate" style="margin-top: 20px;">
+		<button id="join-btn" style="align-items: center; object-fit: contain; position: relative; padding: 10px 20px; cursor: pointer;">Join & Sync</button>
 	</div>
 
   	<div id="video-wrapper" style="position: relative; width: 100%; max-width: 800px; margin: auto;">
-      	<video id="myVideo" width="100%">
-          	<source src="media/movie.mp4" type="video/mp4">
-      	</video>
+      	<video id="myVideo" playsinline controls crossorigin="anonymous" preload="auto"></video>
 
       	<div id="custom-controls" class="video-overlay">
 			<button onclick="togglePlay()" class="control-btn host-only" id="play-pause-btn">
@@ -31,6 +40,12 @@
         		<div id="progress-bar" class="progress-filled"></div>
     		</div>
 
+			<button onclick="toggleSubtitles()" class="control-btn" id="cc-btn" style="display: none; color: #ff0000;">
+                <svg viewBox="0 0 24 24" width="24" height="24">
+                    <path fill="currentColor" d="M19 4H5c-1.11 0-2 .9-2 2v12c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm-8 7H9.5v-.5h-2v3h2V13H11v1.5c0 .83-.67 1.5-1.5 1.5h-2c-.83 0-1.5-.67-1.5-1.5v-3c0-.83.67-1.5 1.5-1.5h2c.83 0 1.5.67 1.5 1.5V11zm7 0h-1.5v-.5h-2v3h2V13H18v1.5c0 .83-.67 1.5-1.5 1.5h-2c-.83 0-1.5-.67-1.5-1.5v-3c0-.83.67-1.5 1.5-1.5h2c.83 0 1.5.67 1.5 1.5V11z"/>
+                </svg>
+            </button>
+
           	<button onclick="toggleFullscreen()" class="control-btn">
 				<svg viewBox="0 0 24 24" width="24" height="24">
 					<path fill="currentColor" d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/>
@@ -40,7 +55,6 @@
 			<span id="time-display" class="time-text">00:00 / 00:00</span>
 
           	<div class="volume-container">
-              	<span>🔊</span>
               	<input type="range" min="0" max="1" step="0.1" value="1" oninput="setVolume(this.value)">
           	</div>
       	</div>
@@ -51,7 +65,8 @@
 <script>
     const urlParams = new URLSearchParams(window.location.search);
     const roomId = urlParams.get('room');
-    const socket = io();
+    const socket = io({secure: true,
+					   transports: ['websocket'] });
     const lobbyDiv = document.getElementById('lobby');
     const roomDiv = document.getElementById('room-interface');
     const roomDisplay = document.getElementById('room-display');
@@ -64,13 +79,28 @@
 	const progressContainer = document.querySelector('.progress-container');
 	const timeDisplay = document.getElementById('time-display');
 	const iconPath = document.getElementById('play-pause-path');
+	const videoSelect = document.getElementById('video-select');
+	
 
 	let mousedown = false;
 	let wasPlayingBeforeScrub = false;
 	let logicInitialized = false;
 	let sync_perm = false;
+	let hasJoined = false;
+	let hls = null;
+	let currentVideoFilename = "";
 
     // --- ROOM MANAGEMENT ---
+
+	socket.on('video-list', (files) => {
+		videoSelect.innerHTML = '<option value="">-- Select a Video --</option>'; // Reset
+		files.forEach(file => {
+			const option = document.createElement('option');
+			option.value = file;
+			option.textContent = file;
+			videoSelect.appendChild(option);
+		});
+	});
 
     function createRoom() {
         socket.emit('request-create-room');
@@ -101,6 +131,8 @@
 			else{
 				hostElements.forEach(el => el.style.display = 'none');
 			}
+			console.log("Reqesting to load video");
+			socket.emit('request-load-video');
             setupSocketLogic(socket); 
         });
 
@@ -123,24 +155,29 @@
 		let idleTimer;
 		video.controls = false;
 
-        joinBtn.onclick = () => {
+        joinBtn.onclick = async () => {
+			hasJoined = true;	
             joinGate.style.display = 'none';
-            
-			wrapper.style.display = 'block';
+			wrapper.style.display = 'flex';
 			video.style.display = 'block';
     		controls.style.display = 'flex';
 
-            video.play().then(() => {
-				video.pause();
-				console.log("Audio context unlocked.");
-                socket.emit('request-sync');
-            }).catch(e => {
-				video.muted = true;
-				video.play().then(() => {
-					socket.emit('request-sync');
-				});
-				console.log("Fallback: Muted autoplay triggered.");
-			});
+			video.muted = false;
+			
+            if (video.currentSrc || video.src) {
+                video.play().catch(e => {
+                    if (e.name !== 'AbortError') {
+                        console.log("Unmuted playback blocked. Falling back to muted...");
+                        video.muted = true;
+                        video.play().catch(err => console.log("Fallback play failed", err));
+                    }
+                });
+            } else {
+                console.log("Waiting for HLS to inject the blob URL...");
+            }
+
+            console.log("Audio context unlocked safely.");
+            socket.emit('request-sync');
         };
         
         // State Guards
@@ -208,6 +245,112 @@
 		}, 3000);
 
         // --- 2. INBOUND: Everyone ---
+		socket.on('load-new-video', (filename) => {
+            if (currentVideoFilename === filename || !filename){
+				filename ? console.log("File already loaded", filename) : console.log("No file to load", filename);
+
+			}
+            currentVideoFilename = filename;
+            console.log("Switching to:", filename);
+            
+            if (hls) {
+                hls.destroy();
+                hls = null;
+            }
+
+            if (!hasJoined) {
+                joinGate.style.display = 'flex';
+                joinBtn.style.display = 'flex';
+                wrapper.style.display = 'none';
+            }
+
+            let webSafePath = filename.split('\\').join('/');
+            webSafePath = webSafePath.split('/').map(encodeURIComponent).join('/');
+            const videoUrl = `/media/${webSafePath}`;
+
+			video.innerHTML = '';
+			const ccBtn = document.getElementById('cc-btn');
+            ccBtn.style.display = 'none';
+
+            const basePath = videoUrl.substring(0, videoUrl.lastIndexOf('/'));
+            const track = document.createElement('track');
+            track.kind = 'subtitles';
+            track.label = 'English';
+            track.srclang = 'en';
+            track.src = `${basePath}/subtitles.vtt`;
+            track.default = true;
+            video.appendChild(track);
+
+			track.addEventListener('load', () => {
+                const textTracks = video.textTracks;
+                if (textTracks.length > 0) {
+                    textTracks[0].mode = 'showing';
+                    ccBtn.style.display = 'block';
+                    ccBtn.style.color = "#ff0000"; 
+                    ccBtn.style.opacity = "1";
+                }
+            });
+
+			track.addEventListener('error', () => {
+                console.log("No subtitles found for this video. Hiding CC button.");
+                ccBtn.style.display = 'none';
+            });
+
+            if (filename.endsWith('.m3u8')) {
+                video.removeAttribute('src'); 
+
+                if (typeof Hls !== 'undefined' && Hls.isSupported()) {
+                    hls = new Hls();
+                    
+                    hls.loadSource(videoUrl);
+                    hls.attachMedia(video);
+                    
+                    hls.on(Hls.Events.MANIFEST_PARSED, function() {
+                        console.log("HLS Manifest Parsed & Ready");
+                        if (hasJoined) {
+                            if (video.currentSrc || video.src) {
+                                video.play().catch(e => console.log("HLS Autoplay blocked:", e));
+                            }
+                        }
+                    });
+                    
+                    hls.on(Hls.Events.ERROR, function (event, data) {
+                        if (data.fatal) {
+                            switch (data.type) {
+                                case Hls.ErrorTypes.MEDIA_ERROR:
+                                    console.warn("Fatal media error encountered, trying to recover...", data);
+                                    hls.recoverMediaError(); // Tell HLS.js to flush the buffer and try again
+                                    break;
+                                case Hls.ErrorTypes.NETWORK_ERROR:
+                                    console.error("Fatal network error encountered", data);
+                                    hls.startLoad(); // Try to fetch the chunk again
+                                    break;
+                                default:
+                                    console.error("Unrecoverable fatal error. Destroying player.", data);
+                                    hls.destroy();
+                                    break;
+                            }
+                        }
+                    });
+                } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+                    video.src = videoUrl;
+                    video.addEventListener('loadedmetadata', function() {
+                        if (hasJoined) video.play().catch(e => console.log("Apple Autoplay blocked:", e));
+                    }, { once: true });
+                }
+            } else {
+                // --- MP4 LOGIC ---
+				video.src = videoUrl;
+				video.load(); 
+				if (hasJoined) {
+					video.play().catch(e => {
+						if (e.name !== 'AbortError') {
+							console.log("MP4 Autoplay blocked:", e);
+						}
+					});
+				}
+			}
+        });
 
 		video.addEventListener('play', () => {
 			iconPath.setAttribute('d', PAUSE_PATH);
@@ -240,6 +383,9 @@
 			}
 			else if(e.key === "m"){
 				video.muted = !video.muted;
+			}
+			else if(e.key === "c"){
+				toggleSubtitles();
 			}
 		});
 
@@ -347,21 +493,48 @@
 		}
     }
 
+
+	function requestChange() {
+		const selectedFile = videoSelect.value;
+		if (selectedFile) {
+			socket.emit('request-video-change', selectedFile);
+		}
+	}
+
 	// Video Custom Controls
 
     function toggleFullscreen() {
-        const wrapper = document.getElementById('video-wrapper');
-        if (!document.fullscreenElement) {
-            wrapper.requestFullscreen().catch(err => {
-				console.error(`Error: ${err.message}`);
-			});
-        } else if (video.webkitRequestFullscreen) { /* Safari */
-            document.exitFullscreen();
+        if (wrapper.requestFullscreen) {
+			wrapper.requestFullscreen();
+		} else if (wrapper.webkitRequestFullscreen) {
+			wrapper.webkitRequestFullscreen(); // iOS Safari
+		} else if (video.webkitEnterFullscreen) {
+			video.webkitEnterFullscreen(); // Older iPhones
+		}
+    }
+
+	function toggleSubtitles() {
+        const ccBtn = document.getElementById('cc-btn');
+        const textTracks = video.textTracks;
+        
+        if (textTracks.length > 0) {
+            const track = textTracks[0];
+            
+            if (track.mode === 'showing') {
+                track.mode = 'hidden';
+                ccBtn.style.color = "white";    
+                ccBtn.style.opacity = "0.5";     
+            } 
+            // If they are OFF, turn them ON
+            else {
+                track.mode = 'showing';
+                ccBtn.style.color = "#ff0000";   
+                ccBtn.style.opacity = "1";      
+            }
         }
     }
 
     function setVolume(val) {
-        const video = document.getElementById('myVideo');
         video.volume = val;
     }
 
