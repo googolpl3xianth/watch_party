@@ -66,12 +66,9 @@ video::cue {
     color: #ffffff;
     font-family: "Trebuchet MS", "Arial", sans-serif; 
     font-weight: bold;
-    font-size: 4vmin; 
 
-    /* The stroke (Your IDE might still underline this, but it works in Chrome/Edge) */
     -webkit-text-stroke: 1.5px black; 
 
-    /* The 8-Point Fallback (Perfectly smooth outline for browsers that block the stroke) */
     text-shadow: 
         -1.5px -1.5px 0 #000,  
          0px   -1.5px 0 #000,

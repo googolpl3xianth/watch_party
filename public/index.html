@@ -182,8 +182,6 @@
         
         // State Guards
         let internalChange = false;
-        let isScrubbing = false;
-        let seekTimeout;
         let lastOutboundTime = 0;
         let lastThrottleEmit = 0;
         const SYNC_THRESHOLD = 1.5; // Slightly higher for mobile stability
@@ -197,14 +195,27 @@
 
         // --- 1. OUTBOUND: Host Interaction ---
 		video.addEventListener('play', () => {
-			if (!sync_perm || internalChange) return;
-			emitSync('play', video.currentTime);
+			if (internalChange) return;
+			if (!sync_perm) { socket.emit('request-sync'); }
+			else{ emitSync('play', video.currentTime); }
 		});
 
 		video.addEventListener('pause', () => {
-			if (!sync_perm) return;
-			emitSync('pause', video.currentTime);
+			if (internalChange) return;
+			if (!sync_perm) { socket.emit('request-sync'); }
+			else{ emitSync('pause', video.currentTime);}
 		});
+
+		video.addEventListener('seeked', () => {
+            if (internalChange) return; 
+
+            if (!sync_perm) {
+                console.log("Guest tried to scrub. Requesting sync to snap back.");
+                socket.emit('request-sync');
+            } else {
+                emitSync('seeked', video.currentTime);
+            }
+        });
 
 		progressContainer.addEventListener('mousedown', (e) => {
 			if(!sync_perm) return;
@@ -239,7 +250,7 @@
 		});
 
 		setInterval(() => {
-			if (sync_perm && !video.paused && !internalChange && !isScrubbing) {
+			if (sync_perm && !video.paused && !internalChange) {
 				emitSync('heartbeat', video.currentTime);
 			}
 		}, 3000);
@@ -502,7 +513,6 @@
 	}
 
 	// Video Custom Controls
-
     function toggleFullscreen() {
         if (wrapper.requestFullscreen) {
 			wrapper.requestFullscreen();
