@@ -1,31 +1,106 @@
+/* =========================================
+   1. GLOBAL & LOBBY LAYOUT
+   ========================================= */
+body {
+    background-color: #121212;
+    color: white;
+    font-family: sans-serif;
+    margin: 0;
+}
+
+#lobby {
+    text-align: center;
+    margin-top: 50px;
+    display: block;
+}
+
+#lobby button {
+    padding: 15px 30px;
+    font-size: 1.2rem;
+    cursor: pointer;
+}
+
+#room-interface {
+    display: none;
+    text-align: center;
+}
+
+#media-controls {
+    margin-bottom: 20px;
+}
+
+/* =========================================
+   2. JOIN GATE
+   ========================================= */
 #join-gate {
     display: none;
     flex-direction: column;
     align-items: center;
     justify-content: center;
     background: #1a1a1a;
-    width: 800px;
-    aspect-ratio: 16/9;
-    margin: auto;
+    width: 100%;
+    max-width: 800px;
+    aspect-ratio: 16 / 9;
+    margin: 20px auto; 
 }
 
+#join-btn {
+    align-items: center;
+    object-fit: contain;
+    position: relative;
+    padding: 10px 20px;
+    cursor: pointer;
+    font-size: 1rem;
+}
+
+/* =========================================
+   3. VIDEO WRAPPER & PLAYER
+   ========================================= */
 #video-wrapper {
     background-color: black;
     position: relative;
     width: 100%;
     max-width: 800px;
+    aspect-ratio: 16 / 9;
     margin: auto;
     overflow: hidden;
     display: none;
     align-items: center;
     justify-content: center;
+    isolation: isolate;
 }
 
-#myVideo, .video-overlay {
-    display: none; /* Hide until Join button is clicked */
+#myVideo {
+    display: none;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    background-color: transparent;
+    
+    position: relative;
+    z-index: 1;
+    opacity: 0.999;
+    transform: perspective(1px) translateZ(0);
+    -webkit-transform: perspective(1px) translateZ(0);
+    will-change: transform, filter;
+    filter: blur(0px); 
 }
 
+/* --- FULLSCREEN RULES --- */
+#video-wrapper:fullscreen,
+#video-wrapper:-webkit-full-screen {
+    width: 100% !important;
+    height: 100% !important;
+    max-width: none !important;
+    aspect-ratio: auto !important;
+    margin: 0 !important;
+}
+
+/* =========================================
+   4. CUSTOM OVERLAY & CONTROLS
+   ========================================= */
 .video-overlay {
+    display: none; 
     position: absolute;
     bottom: 0;
     left: 0;
@@ -35,54 +110,60 @@
     justify-content: space-between;
     padding: 10px 15px;
     gap: 15px;
-    opacity: 0;
+    opacity: 1; 
     transition: opacity 0.5s;
-    z-index: 10;
     transform: translateZ(0);
     pointer-events: auto;
+    z-index: 2147483647 !important; 
 }
 
-.hide-controls {
+/* --- IDLE STATE (HIDES CONTROLS & CURSOR) --- */
+#video-wrapper.is-idle {
+    cursor: none !important; 
+}
+
+#video-wrapper.is-idle .video-overlay {
     opacity: 0 !important;
-    cursor: none; /* Also hide the mouse cursor for a better movie experience */
+    pointer-events: none !important; 
 }
 
-#video-wrapper:hover .video-overlay {
-    opacity: 1;
-}
-#myVideo {
-    max-width: 100%;
-    max-height: 100%;
-    object-fit: contain;
-    background-color: black;
-    display: none;
-}
-
-/* --- SUBTITLE STYLING --- */
-video::cue {
+/* --- BUTTONS & ICONS --- */
+.control-btn {
     background: transparent;
-    background-color: transparent;
-
-    color: #ffffff;
-    font-family: "Trebuchet MS", "Arial", sans-serif; 
-    font-weight: bold;
-
-    -webkit-text-stroke: 1.5px black; 
-
-    text-shadow: 
-        -1.5px -1.5px 0 #000,  
-         0px   -1.5px 0 #000,
-         1.5px -1.5px 0 #000,
-         1.5px  0px   0 #000,
-         1.5px  1.5px 0 #000,
-         0px    1.5px 0 #000,
-        -1.5px  1.5px 0 #000,
-        -1.5px  0px   0 #000,
-         0px    3px   6px rgba(0,0,0,0.9); /* Soft drop shadow */
+    border: none;
+    color: white;
+    cursor: pointer;
+    transition: transform 0.1s ease;
 }
 
+.control-btn:active {
+    transform: scale(0.9);
+}
+
+.control-btn svg {
+    display: block;
+    transition: transform 0.2s;
+}
+
+.control-btn:hover svg {
+    transform: scale(1.1);
+    color: #ff0000;
+}
+
+#quality-selector {
+    outline: none;
+    font-weight: bold;
+    -webkit-appearance: none;
+    padding: 0 10px;
+}
+
+#quality-selector option {
+    color: black;
+}
+
+/* --- PROGRESS BAR --- */
 .progress-container {
-    flex-grow: 1; /* Takes up all available space between buttons */
+    flex-grow: 1; 
     height: 8px;
     background: rgba(255, 255, 255, 0.3);
     border-radius: 4px;
@@ -92,15 +173,15 @@ video::cue {
     position: relative;
 }
 
-.mouse-interact {
-    cursor: pointer !important;
-}
-
 .progress-filled {
     height: 100%;
-    width: 0%; /* Starts at 0 */
-    background: #ff0000; /* Red like YouTube */
+    width: 0%; 
+    background: #ff0000; 
     pointer-events: none;
+}
+
+.mouse-interact {
+    cursor: pointer !important;
 }
 
 .time-text {
@@ -111,28 +192,26 @@ video::cue {
     white-space: nowrap;
 }
 
-.host-only {
-    display: none;
+/* --- SUBTITLES --- */
+video::cue {
+    background: transparent;
+    background-color: transparent;
+    color: #ffffff;
+    font-family: "Trebuchet MS", "Arial", sans-serif; 
+    font-weight: bold;
+    -webkit-text-stroke: 1.5px black; 
+    text-shadow: 
+        -1.5px -1.5px 0 #000,  
+         0px   -1.5px 0 #000,
+         1.5px -1.5px 0 #000,
+         1.5px  0px   0 #000,
+         1.5px  1.5px 0 #000,
+         0px    1.5px 0 #000,
+        -1.5px  1.5px 0 #000,
+        -1.5px  0px   0 #000,
+         0px    3px   6px rgba(0,0,0,0.9);
 }
 
-.show-host {
-    display: block !important;
-}
-
-.control-btn {
-    transition: transform 0.1s ease;
-}
-
-.control-btn:active {
-    transform: scale(0.9); /* Subtle "click" effect */
-}
-
-.control-btn svg {
-    display: block;
-    transition: transform 0.2s;
-}
-
-.control-btn:hover svg {
-    transform: scale(1.1);
-    color: #ff0000; /* Red hover effect */
-}
+/* --- UTILITIES --- */
+.host-only { display: none; }
+.show-host { display: block !important; }

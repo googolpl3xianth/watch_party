@@ -1,65 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
 <head>
-	<link rel="stylesheet" href="style.css">
+    <meta charset="UTF-8">
+    <title>Watch Party</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
 </head>
+<body>
+    <div id="lobby">
+        <h1>Watch Party</h1>
+        <button onclick="createRoom()">Create New Room</button>
+    </div>
 
-<script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+    <div id="room-interface">
+        <h2 id="room-display"></h2>
 
-<div id="lobby" style="display: block; text-align: center; margin-top: 50px;">
-    <h1>Watch Party</h1>
-    <button onclick="createRoom()" style="padding: 15px 30px; font-size: 1.2rem; cursor: pointer;">
-        Create New Room
-    </button>
-</div>
+        <div id="media-controls" class="host-only">
+            <label for="video-select">Select Video:</label>
+            <select id="video-select">
+                <option value="">-- Select a Video --</option>
+            </select>
+            <button onclick="requestChange()">Load for Everyone</button>
+        </div>
 
-<div id="room-interface" style="display: none;">
-  	<h2 id="room-display"></h2>
+        <div id="join-gate">
+            <button id="join-btn">Join & Sync</button>
+        </div>
 
-	<div id="media-controls" class = "host-only">
-		<label for="video-select">Choose a Movie:</label>
-		<select id="video-select">
-			<option value="">-- Select a Video --</option>
-		</select>
-		<button onclick="requestChange()">Load for Everyone</button>
-	</div>
+        <div id="video-wrapper">
+            <video id="myVideo" playsinline controls crossorigin="anonymous" preload="auto"></video>
 
-	<div id="join-gate" style="margin-top: 20px;">
-		<button id="join-btn" style="align-items: center; object-fit: contain; position: relative; padding: 10px 20px; cursor: pointer;">Join & Sync</button>
-	</div>
+            <div id="custom-controls" class="video-overlay">
+                
+                <button onclick="togglePlay()" class="control-btn host-only" id="play-pause-btn">
+                    <svg viewBox="0 0 24 24" width="24" height="24">
+                        <path id="play-pause-path" fill="currentColor" d="M8 5v14l11-7z"/> 
+                    </svg>
+                </button>
 
-  	<div id="video-wrapper" style="position: relative; width: 100%; max-width: 800px; margin: auto;">
-      	<video id="myVideo" playsinline controls crossorigin="anonymous" preload="auto"></video>
+                <div class="progress-container">
+                    <div id="progress-bar" class="progress-filled"></div>
+                </div>
 
-      	<div id="custom-controls" class="video-overlay">
-			<button onclick="togglePlay()" class="control-btn host-only" id="play-pause-btn">
-				<svg viewBox="0 0 24 24" width="24" height="24">
-					<path id="play-pause-path" fill="currentColor" d="M8 5v14l11-7z"/> 
-				</svg>
-			</button>
+                <button onclick="toggleSubtitles()" class="control-btn" id="cc-btn" style="display: none; color: #ff0000;">
+                    <svg viewBox="0 0 24 24" width="24" height="24">
+                        <path fill="currentColor" d="M19 4H5c-1.11 0-2 .9-2 2v12c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm-8 7H9.5v-.5h-2v3h2V13H11v1.5c0 .83-.67 1.5-1.5 1.5h-2c-.83 0-1.5-.67-1.5-1.5v-3c0-.83.67-1.5 1.5-1.5h2c.83 0 1.5.67 1.5 1.5V11zm7 0h-1.5v-.5h-2v3h2V13H18v1.5c0 .83-.67 1.5-1.5 1.5h-2c-.83 0-1.5-.67-1.5-1.5v-3c0-.83.67-1.5 1.5-1.5h2c.83 0 1.5.67 1.5 1.5V11z"/>
+                    </svg>
+                </button>
 
-			<div class="progress-container">
-        		<div id="progress-bar" class="progress-filled"></div>
-    		</div>
+                <button onclick="toggleFullscreen()" class="control-btn">
+                    <svg viewBox="0 0 24 24" width="24" height="24">
+                        <path fill="currentColor" d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/>
+                    </svg>
+                </button>
 
-			<button onclick="toggleSubtitles()" class="control-btn" id="cc-btn" style="display: none; color: #ff0000;">
-                <svg viewBox="0 0 24 24" width="24" height="24">
-                    <path fill="currentColor" d="M19 4H5c-1.11 0-2 .9-2 2v12c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm-8 7H9.5v-.5h-2v3h2V13H11v1.5c0 .83-.67 1.5-1.5 1.5h-2c-.83 0-1.5-.67-1.5-1.5v-3c0-.83.67-1.5 1.5-1.5h2c.83 0 1.5.67 1.5 1.5V11zm7 0h-1.5v-.5h-2v3h2V13H18v1.5c0 .83-.67 1.5-1.5 1.5h-2c-.83 0-1.5-.67-1.5-1.5v-3c0-.83.67-1.5 1.5-1.5h2c.83 0 1.5.67 1.5 1.5V11z"/>
-                </svg>
-            </button>
+                <select id="quality-selector" class="control-btn" style="display: none;">
+                    <option value="-1">Auto</option>
+                </select>
 
-          	<button onclick="toggleFullscreen()" class="control-btn">
-				<svg viewBox="0 0 24 24" width="24" height="24">
-					<path fill="currentColor" d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/>
-				</svg>
-			</button>
+                <span id="time-display" class="time-text">00:00 / 00:00</span>
 
-			<span id="time-display" class="time-text">00:00 / 00:00</span>
+                <div class="volume-container">
+                    <input type="range" min="0" max="1" step="0.1" value="1" oninput="setVolume(this.value)">
+                </div>
 
-          	<div class="volume-container">
-              	<input type="range" min="0" max="1" step="0.1" value="1" oninput="setVolume(this.value)">
-          	</div>
-      	</div>
-  	</div>
-</div>
+            </div>
+        </div>
+    </div>
+
+    </body>
+</html>
 
 <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
 <script>
@@ -259,7 +269,6 @@
 		socket.on('load-new-video', (filename) => {
             if (currentVideoFilename === filename || !filename){
 				filename ? console.log("File already loaded", filename) : console.log("No file to load", filename);
-
 			}
             currentVideoFilename = filename;
             console.log("Switching to:", filename);
@@ -282,6 +291,8 @@
 			video.innerHTML = '';
 			const ccBtn = document.getElementById('cc-btn');
             ccBtn.style.display = 'none';
+
+			document.getElementById('quality-selector').style.display = 'none';
 
             const basePath = videoUrl.substring(0, videoUrl.lastIndexOf('/'));
             const track = document.createElement('track');
@@ -311,13 +322,56 @@
                 video.removeAttribute('src'); 
 
                 if (typeof Hls !== 'undefined' && Hls.isSupported()) {
-                    hls = new Hls();
+                    const savedQuality = localStorage.getItem('hlsQuality');
+                    let initialStartLevel = -1; 
+
+                    if (savedQuality !== null) {
+                        initialStartLevel = parseInt(savedQuality);
+                    }
+
+                    hls = new Hls({
+                        startLevel: initialStartLevel, 
+                        capLevelToPlayerSize: true 
+                    });
                     
                     hls.loadSource(videoUrl);
                     hls.attachMedia(video);
                     
                     hls.on(Hls.Events.MANIFEST_PARSED, function() {
                         console.log("HLS Manifest Parsed & Ready");
+                        
+                        const qualitySelector = document.getElementById('quality-selector');
+                        qualitySelector.style.display = 'inline-block';
+                        qualitySelector.innerHTML = '<option value="-1" style="color: black;">Auto</option>'; 
+                        
+                        hls.levels.forEach((level, index) => {
+                            const option = document.createElement('option');
+                            option.value = index; 
+
+							let labelName = `${level.height}p`; // Fallback
+                            if (level.width === 1920) labelName = "1080p";
+                            else if (level.width === 1280) labelName = "720p";
+                            else if (level.width === 854) labelName = "480p";
+
+                            option.textContent = labelName; 
+                            option.style.color = 'black'; 
+                            qualitySelector.appendChild(option);
+                        });
+
+                        if (savedQuality !== null) {
+                            qualitySelector.value = savedQuality;
+                            hls.currentLevel = parseInt(savedQuality); 
+                        }
+
+                        qualitySelector.addEventListener('change', (e) => {
+                            const newLevel = parseInt(e.target.value);
+                            hls.nextLevel = newLevel; 
+                            
+                            localStorage.setItem('hlsQuality', newLevel);
+                            
+                            console.log(newLevel === -1 ? "Quality: Auto" : `Quality forced to: ${hls.levels[newLevel].height}p`);
+                        });
+
                         if (hasJoined) {
                             if (video.currentSrc || video.src) {
                                 video.play().catch(e => console.log("HLS Autoplay blocked:", e));
@@ -411,9 +465,6 @@
 			}
 		});
 
-		wrapper.addEventListener('mousemove', resetIdleTimer);
-		wrapper.addEventListener('mousedown', resetIdleTimer);
-
 		socket.on('switch-permission', (permission) =>{
 			const hostElements = document.querySelectorAll('.host-only');
 			sync_perm = (permission === 'host' || permission === 'admin');
@@ -490,18 +541,23 @@
         }
 
 		function resetIdleTimer() {
-			controls.classList.remove('hide-controls');
-			wrapper.style.cursor = 'default';
+			wrapper.classList.remove('is-idle');
 
-			clearTimeout(idleTimer);
+            clearTimeout(idleTimer);
 
-			idleTimer = setTimeout(() => {
-				if (!video.paused) {
-					controls.classList.add('hide-controls');
-					wrapper.style.cursor = 'none';
-				}
-			}, 2000);
+            idleTimer = setTimeout(() => {
+                if (!video.paused) {
+                    wrapper.classList.add('is-idle');
+                }
+            }, 2000);
 		}
+
+		wrapper.addEventListener('mousemove', resetIdleTimer);
+        wrapper.addEventListener('mousedown', resetIdleTimer);
+        wrapper.addEventListener('keydown', resetIdleTimer);
+        
+        wrapper.addEventListener('fullscreenchange', resetIdleTimer);
+        wrapper.addEventListener('webkitfullscreenchange', resetIdleTimer);
     }
 
 
@@ -514,12 +570,20 @@
 
 	// Video Custom Controls
     function toggleFullscreen() {
-        if (wrapper.requestFullscreen) {
-			wrapper.requestFullscreen();
-		} else if (wrapper.webkitRequestFullscreen) {
-			wrapper.webkitRequestFullscreen(); // iOS Safari
-		} else if (video.webkitEnterFullscreen) {
-			video.webkitEnterFullscreen(); // Older iPhones
+        if (wrapper.requestFullscreen) { // Standard Web Fullscreen (Desktop, Android, iPad)
+            if (!document.fullscreenElement) {
+                wrapper.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+		} else if (wrapper.webkitRequestFullscreen) { // Older WebKit fallback (Older Desktop/Android)
+			if (!document.webkitFullscreenElement) {
+                wrapper.webkitRequestFullscreen();
+            } else {
+                document.webkitExitFullscreen();
+            }
+		} else if (video.webkitEnterFullscreen) { // Older iPhones
+			video.webkitEnterFullscreen(); 
 		}
     }
 
