@@ -7,8 +7,6 @@ services:
       - ${MEDIA_FOLDER}:/videos:ro
   web-server:
     image: nginxinc/nginx-unprivileged:alpine
-    ports:
-      - "0.0.0.0:8080:8080"
     volumes:
       - ./public:/usr/share/nginx/html
       - ./nginx.conf:/etc/nginx/nginx.conf:ro
