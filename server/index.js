@@ -54,7 +54,7 @@ io.on('connection', (socket) => {
         creationSpamFilter.set(userIp, now);
 
         const newID = Math.random().toString(36).substring(2, 8);
-        activeRooms[newID] = {currentTime: 0, isPaused: true, host: null, users: {}};
+        activeRooms[newID] = {currentTime: 0, isPaused: true, host: null, users: {}, bufferingUsers: new Set()};
 
         console.log(`Room created: ${newID} by host: ${socket.id}`);
         socket.emit('room-created', newID);
@@ -144,6 +144,26 @@ io.on('connection', (socket) => {
         socket.to(currentRoomId).emit('apply-sync', data);
     });
 
+    socket.on('client-buffering', () => {
+        if (currentRoomId && activeRooms[currentRoomId]) {
+            activeRooms[currentRoomId].bufferingUsers.add(socket.id);
+            console.log(`Room ${currentRoomId}: User ${socket.id} is buffering. Pausing room.`);
+            if (!activeRooms[currentRoomId].isPaused) {
+                socket.to(currentRoomId).emit('force-pause-room', socket.id);
+            }
+        }
+    });
+
+    socket.on('client-recovered', () => {
+        if (currentRoomId && activeRooms[currentRoomId]) {
+            activeRooms[currentRoomId].bufferingUsers.delete(socket.id);
+            console.log(`Room ${currentRoomId}: User ${socket.id} recovered. Resuming room.`);
+            if (activeRooms[currentRoomId].bufferingUsers.size === 0 && !activeRooms[currentRoomId].isPaused) {
+                socket.to(currentRoomId).emit('resume-room');
+            }
+        }
+    });
+
     socket.on('request-user-change', (targetID, targetUsername, targetRole) => {
         if (!currentRoomId || !activeRooms[currentRoomId]) return;
 
@@ -202,6 +222,12 @@ io.on('connection', (socket) => {
         if (roomToCleanup && activeRooms[roomToCleanup]) {
             const wasHost = activeRooms[roomToCleanup].users[socket.id].role === 'host';
             delete activeRooms[roomToCleanup].users[socket.id];
+            if (activeRooms[roomToCleanup].bufferingUsers.has(socket.id)) {
+                activeRooms[roomToCleanup].bufferingUsers.delete(socket.id);
+                if (activeRooms[roomToCleanup].bufferingUsers.size === 0 && !activeRooms[roomToCleanup].isPaused) {
+                    socket.to(roomToCleanup).emit('resume-room');
+                }
+            }
             socket.to(roomToCleanup).emit('user-left', socket.id);
 
             if (wasHost) {

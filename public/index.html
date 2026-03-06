@@ -427,7 +427,10 @@
         };
         
         // State Guards
+        let isBufferingLocal = false;
         let internalChange = false;
+        let syncLockTimer = null; 
+        let pendingPlayListener = null;
         let lastOutboundTime = 0;
         let lastThrottleEmit = 0;
         const SYNC_THRESHOLD = 1.5; // Slightly higher for mobile stability
@@ -685,7 +688,6 @@
 		});
 
 		video.addEventListener('pause', () => {
-            videoLoader.classList.remove('visible');
 			playPauseIcon.src = "./img/play.svg";
             playPauseIcon.alt = "play";
 		});
@@ -720,13 +722,21 @@
 		});
 
         video.addEventListener('waiting', () => {
-            videoLoader.classList.add('visible');
-            console.log("[Player] Buffering... showing loader.");
+            if (!isBufferingLocal) {
+                isBufferingLocal = true;
+                videoLoader.classList.add('visible');
+                console.log("[Player] Buffering... showing loader.");
+                if (hasJoined) socket.emit('client-buffering');
+            }
         });
 
         video.addEventListener('playing', () => {
-            videoLoader.classList.remove('visible');
-            console.log("[Player] Recovered! Hiding loader.");
+            if (isBufferingLocal) {
+                isBufferingLocal = false;
+                videoLoader.classList.remove('visible');
+                console.log("[Player] Recovered! Hiding loader.");
+                if (hasJoined) socket.emit('client-recovered');
+            }
         });
 
 		video.addEventListener('timeupdate', () => {
@@ -825,8 +835,30 @@
             }
         });
 
+        socket.on('force-pause-room', (bufferingUserId) => {
+            console.log(`User ${bufferingUserId} is buffering. Auto-pausing...`);
+            internalChange = true; 
+            video.pause();
+            setTimeout(() => { internalChange = false; }, 300);
+            videoLoader.classList.add('visible');
+        });
+
+        socket.on('resume-room', () => {
+            console.log("Everyone caught up. Auto-resuming...");
+            internalChange = true;
+            video.play().catch(e => console.log("Auto-resume blocked:", e));
+            setTimeout(() => { internalChange = false; }, 300);
+            videoLoader.classList.remove('visible');
+        });
+
         function executeSync(data) {
-			internalChange = true;
+            internalChange = true;
+            if (syncLockTimer) clearTimeout(syncLockTimer);
+
+            if (pendingPlayListener) {
+                video.removeEventListener('canplay', pendingPlayListener);
+                pendingPlayListener = null;
+            }
 
             const needsSeek = Math.abs(video.currentTime - data.time) > 0.1;
 
@@ -840,26 +872,32 @@
                 }
 
                 video.addEventListener('seeked', () => {
-                    setTimeout(() => { internalChange = false; }, 50);
+                    if (syncLockTimer) clearTimeout(syncLockTimer);
+                    syncLockTimer = setTimeout(() => { internalChange = false; }, 100);
                 }, { once: true });
             }
-
-			if (data.type === 'play') {
+            
+            if (data.type === 'play') {
                 if (video.readyState >= 3) {
                     video.play().catch(e => console.log("Playback failed:", e));
                 } else {
-                    const playWhenReady = () => {
+                    pendingPlayListener = () => {
+                        internalChange = true; 
+                        if (syncLockTimer) clearTimeout(syncLockTimer);
+
                         video.play().catch(e => console.log("Delayed play failed:", e));
-                        video.removeEventListener('canplay', playWhenReady);
+                        
+                        syncLockTimer = setTimeout(() => { internalChange = false; }, 300);
+                        pendingPlayListener = null;
                     };
-                    video.addEventListener('canplay', playWhenReady);
+                    video.addEventListener('canplay', pendingPlayListener, { once: true });
                 }
             } else if (data.type === 'pause') {
                 video.pause();
             }
 
             if (!needsSeek) {
-                setTimeout(() => { internalChange = false; }, 100);
+                syncLockTimer = setTimeout(() => { internalChange = false; }, 300);
             }
         }
 
