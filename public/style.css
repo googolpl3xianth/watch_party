@@ -9,15 +9,86 @@ body {
 }
 
 #lobby {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 80vh;
     text-align: center;
-    margin-top: 50px;
-    display: block;
 }
 
-#lobby button {
-    padding: 15px 30px;
-    font-size: 1.2rem;
+.lobby-card {
+    background: #1e1e1e;
+    padding: 30px 40px;
+    border-radius: 12px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    width: 100%;
+    max-width: 350px;
+}
+
+.lobby-card button {
+    padding: 12px 24px;
+    font-size: 1.1rem;
+    border-radius: 8px;
+    border: none;
     cursor: pointer;
+    font-weight: bold;
+    transition: transform 0.1s, opacity 0.2s;
+}
+
+.lobby-card button:hover { opacity: 0.9; }
+.lobby-card button:active { transform: scale(0.96); }
+
+.primary-btn {
+    background: #ffffff; /* Or whatever your accent color is */
+    color: #000000;
+    width: 100%;
+}
+
+.secondary-btn {
+    background: #333333;
+    color: white;
+}
+
+/* The 'OR' line */
+.divider {
+    display: flex;
+    align-items: center;
+    color: #888;
+    font-size: 0.9rem;
+    font-weight: bold;
+}
+
+.divider::before, .divider::after {
+    content: "";
+    flex: 1;
+    border-bottom: 1px solid #444;
+    margin: 0 10px;
+}
+
+.join-box {
+    display: flex;
+    gap: 10px;
+}
+
+#room-code-input {
+    flex-grow: 1;
+    padding: 12px;
+    font-size: 1.1rem;
+    border-radius: 8px;
+    border: 2px solid #333;
+    background: #121212;
+    color: white;
+    text-align: center;
+    outline: none;
+    transition: border-color 0.2s;
+}
+
+#room-code-input:focus {
+    border-color: #ffffff;
 }
 
 #room-interface {
@@ -25,12 +96,33 @@ body {
     text-align: center;
 }
 
-#room-header {
+#room-title {
     display: flex;
     align-items: center; 
     justify-content: center;
     gap: 5px; 
     margin-bottom: 15px;      
+}
+
+#room-header {
+    position: fixed;
+    top: 5vmin;
+    left: 5vmin;
+    display: flex;
+    align-items: center; 
+    gap: 10px;   
+    z-index: 1000;
+}
+
+#room-header h2 {
+    margin: 0;
+    font-size: 1.5rem; /* Adjust this to match your design */
+}
+
+#home-btn{
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
 #media-controls {
@@ -312,21 +404,6 @@ video::-webkit-media-text-track-container {
 
 .loader.visible {
     display: block;
-}
-
-/* =========================================
-   6. Room UI
-   ========================================= */
-
-#home-btn{
-    display: flex;
-    align-items: center;
-    position: fixed;
-    top: 5vmin;
-    left: 5vmin;
-    justify-content: flex-end;
-    isolation: isolate;
-    flex-direction: column;
 }
 
 /* =========================================

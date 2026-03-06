@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <title>Watch Party</title>
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="style.css?v=5">
     <link rel="apple-touch-icon" sizes="180x180" href="./img/favicon_io/apple-touch-icon.png">
     <link rel="icon" type="image/png" sizes="32x32" href="./img/favicon_io/favicon-32x32.png">
     <link rel="icon" type="image/png" sizes="16x16" href="./img/favicon_io/favicon-16x16.png">
@@ -31,20 +31,37 @@
 
     <div id="lobby">
         <h1>Watch Party</h1>
-        <button onclick="createRoom()">Create New Room</button>
+        <div class="lobby-card">
+            <button onclick="createRoom()" class="primary-btn">Create New Room</button>
+            
+            <div class="divider">
+                <span>OR</span>
+            </div>
+            
+            <div class="join-box">
+                <input type="text" id="room-code-input" placeholder="Room Code" autocomplete="off" maxlength="8">
+                <button onclick="joinManualRoom()" class="secondary-btn">Join</button>
+            </div>
+        </div>
     </div>
 
     <div id="room-interface">
-        <div id="room-header">
+        <div id="room-title">
             <h2 id="room-display"></h2>
             <button onclick="getRoomLink()" class="clean-btn">
                 <img src="./img/link.svg" alt="link" width="24" height="24">
             </button>
         </div>
 
-        <button id="home-btn" class="host-only" onclick="goHome()">
-            <img src="./img/home.svg" alt="home" width="24" height="24">
-        </button>
+        <div id="room-header">
+            <button id="home-btn" onclick="goHome()">
+                <img src="./img/home.svg" alt="home" width="24" height="24">
+            </button>
+            <h4 id="username">Name: </h4>
+            <button id="edit-name-btn" onclick="rename()" class="clean-btn">
+                <img src="./img/edit.svg" alt="edit" width="24" height="24">
+            </button>
+        </div>
 
         <div id="sidebar-wrapper">
             <div class="users">
@@ -134,8 +151,10 @@
     const socket = io({secure: true,
 					   transports: ['websocket'] });
     const lobbyDiv = document.getElementById('lobby');
+    const roomCodeInput = document.getElementById('room-code-input');
     const roomDiv = document.getElementById('room-interface');
     const roomDisplay = document.getElementById('room-display');
+    const usernameHeader = document.getElementById('username');
     const videoSelect = document.getElementById('video-select');
 	const title = document.getElementById('video-title');
     const userList = document.getElementById('user-list');
@@ -174,6 +193,24 @@
     // --- ROOM MANAGEMENT ---
     function createRoom() {
         socket.emit('request-create-room');
+    }
+
+    if (roomCodeInput) {
+        roomCodeInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') joinManualRoom();
+        });
+    }
+
+    function joinManualRoom(){
+        const input = document.getElementById('room-code-input');
+        const code = input.value.trim().toLowerCase(); 
+        
+        if (code.length > 0) {
+            window.location.search = `?room=${code}`;
+        } else {
+            input.style.borderColor = "red";
+            setTimeout(() => input.style.borderColor = "#333", 1000);
+        }
     }
 
     socket.on('room-created', (newId) => {
@@ -230,7 +267,7 @@
         });
     } else {
         // We are in the lobby
-        lobbyDiv.style.display = 'block';
+        lobbyDiv.style.display = 'flex';
         roomDiv.style.display = 'none';
     }
 
@@ -274,7 +311,7 @@
                 const targetName = userDetails.username || 'Guest';
                 const targetRole = userDetails.role || 'guest';
                 let displayText = `${targetName} (${targetRole})`;
-                if(socketId === socket.id){ displayText += ' *';}
+                if(socketId === socket.id){ displayText += ' *'; usernameHeader.innerText = `Name: ${targetName}`;}
 
                 let userDiv = userList.querySelector(`.user-item[data-id="${socketId}"]`);
 
@@ -763,6 +800,7 @@
             if (userDiv && usersArray[targetSocketID]) {
                 let displayText = `${usersArray[targetSocketID].username} (${usersArray[targetSocketID].role})`;
                 if (targetSocketID === socket.id) { displayText += ' *'; }
+                usernameHeader.innerText = `Name: ${usersArray[targetSocketID].username}`
                 userDiv.innerText = displayText;
             }
 
@@ -971,6 +1009,7 @@
     function rename(){
         let username = window.prompt("What's your username?");
         if (username) {
+            usernameHeader.innerText = `Name: ${username}`;
             updateUser(socket.id, username, null); // Always update your own name
         }
         userMenu.classList.remove('visible');
