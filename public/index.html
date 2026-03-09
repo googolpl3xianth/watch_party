@@ -247,7 +247,7 @@
 					el.style.setProperty('display', 'block', 'important');
 				});
 				progressContainer.classList.add('mouse-interact');
-				console.log("Privileged permissions activated: showing controls.");
+				//console.log("Privileged permissions activated: showing controls.");
 			}
 			else{
                 guestElements.forEach(el => {
@@ -256,7 +256,7 @@
                 });
 				permElements.forEach(el => el.style.display = 'none');
 			}
-			console.log("Reqesting to load video");
+			//console.log("Reqesting to load video");
 			socket.emit('request-load-video');
             setupSocketLogic(socket); 
         });
@@ -362,11 +362,11 @@
                     renameBtn.style.display = 'none';
                 }
                 if ((targetSocketId === socket.id && sync_perm) || isHost) {
-                    console.log(`${isHost}`);
+                    //console.log(`${isHost}`);
                     changeRoleBtn.style.display = 'block';
                 } else {
                     changeRoleBtn.style.display = 'none';
-                    console.log(`${changeRoleBtn.style.display}`);
+                    //console.log(`${changeRoleBtn.style.display}`);
                 }
 
                 userMenu.classList.add('visible');
@@ -450,16 +450,16 @@
             if (video.currentSrc || video.src) {
                 video.play().catch(e => {
                     if (e.name !== 'AbortError') {
-                        console.log("Unmuted playback blocked. Falling back to muted...");
+                        //console.log("Unmuted playback blocked. Falling back to muted...");
                         video.muted = true;
-                        video.play().catch(err => console.log("Fallback play failed", err));
+                        video.play().catch(err => console.error("Fallback play failed", err));
                     }
                 });
             } else {
-                console.log("Waiting for HLS to inject the blob URL...");
+                //console.log("Waiting for HLS to inject the blob URL...");
             }
 
-            console.log("Audio context unlocked safely.");
+            //console.log("Audio context unlocked safely.");
             socket.emit('request-sync');
         };
         
@@ -541,10 +541,10 @@
             roomStatus.classList.remove('show-guest');
             roomStatus.style.setProperty('display', 'none', 'important');
             if (currentVideoFilename === filename || !filename){
-				filename ? console.log("File already loaded", filename) : console.log("No file to load", filename);
+				filename ? console.error("File already loaded", filename) : console.error("No file to load", filename);
 			}
             currentVideoFilename = filename;
-            console.log("Switching to:", filename);
+            //console.log("Switching to:", filename);
             
             if (hls) {
                 hls.destroy();
@@ -588,7 +588,7 @@
             });
 
 			track.addEventListener('error', () => {
-                console.log("No subtitles found for this video. Hiding CC button.");
+                //console.log("No subtitles found for this video. Hiding CC button.");
                 ccBtn.style.display = 'none';
             });
 
@@ -618,7 +618,7 @@
                     hls.attachMedia(video);
                     
                     hls.on(Hls.Events.MANIFEST_PARSED, function() {
-                        console.log("HLS Manifest Parsed & Ready");
+                        //console.log("HLS Manifest Parsed & Ready");
                         
                         const qualitySelector = document.getElementById('quality-selector');
                         qualitySelector.style.display = 'inline-block';
@@ -649,12 +649,12 @@
                             
                             localStorage.setItem('hlsQuality', newLevel);
                             
-                            console.log(newLevel === -1 ? "Quality: Auto" : `Quality forced to: ${hls.levels[newLevel].height}p`);
+                            //console.log(newLevel === -1 ? "Quality: Auto" : `Quality forced to: ${hls.levels[newLevel].height}p`);
                         });
 
                         if (hasJoined) {
                             if (video.currentSrc || video.src) {
-                                video.play().catch(e => console.log("HLS Autoplay blocked:", e));
+                                video.play().catch(e => console.error("HLS Autoplay blocked:", e));
                             }
                         }
                     });
@@ -663,7 +663,7 @@
                         const activeLevel = hls.levels[data.level];
                         const currentHeight = activeLevel.height;
                         
-                        console.log(`[HLS] Seamlessly switched to: ${currentHeight}p`);
+                        //console.log(`[HLS] Seamlessly switched to: ${currentHeight}p`);
 
                         const qualitySelector = document.getElementById('quality-selector');
                         
@@ -696,7 +696,7 @@
                 } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
                     video.src = videoUrl;
                     video.addEventListener('loadedmetadata', function() {
-                        if (hasJoined) video.play().catch(e => console.log("Apple Autoplay blocked:", e));
+                        if (hasJoined) video.play().catch(e => console.error("Apple Autoplay blocked:", e));
                     }, { once: true });
                 }
             } else {
@@ -706,7 +706,7 @@
 				if (hasJoined) {
 					video.play().catch(e => {
 						if (e.name !== 'AbortError') {
-							console.log("MP4 Autoplay blocked:", e);
+							//console.log("MP4 Autoplay blocked:", e);
 						}
 					});
 				}
@@ -762,7 +762,7 @@
             if (!isBufferingLocal) {
                 isBufferingLocal = true;
                 videoLoader.classList.add('visible');
-                console.log("[Player] Buffering... showing loader.");
+                //console.log("[Player] Buffering... showing loader.");
                 if (hasJoined) socket.emit('client-buffering');
             }
         });
@@ -771,7 +771,7 @@
             if (isBufferingLocal) {
                 isBufferingLocal = false;
                 videoLoader.classList.remove('visible');
-                console.log("[Player] Recovered! Hiding loader.");
+                //console.log("[Player] Recovered! Hiding loader.");
                 if (hasJoined) socket.emit('client-recovered');
             }
         });
@@ -788,7 +788,7 @@
 		});
 
 		socket.on('switch-permission', (targetSocketID, newUsername, newRole) => {
-            console.log("Received switch-permission from server for:", targetSocketID, newRole);
+            //console.log("Received switch-permission from server for:", targetSocketID, newRole);
             if(!targetSocketID) { targetSocketID = socket.id; }
             
             if (usersArray[targetSocketID]) {
@@ -841,7 +841,7 @@
                         el.style.setProperty('display', 'block', 'important');
                     });
                     progressContainer.classList.add('mouse-interact');
-                    console.log("I am now a host. Controls unlocked.");
+                    //console.log("I am now a host. Controls unlocked.");
                 } else {
                     guestElements.forEach(el => {
                         el.classList.add('show-guest');
@@ -852,7 +852,7 @@
                         el.style.setProperty('display', 'none', 'important');
                     });
                     progressContainer.classList.remove('mouse-interact');
-                    console.log("I am now a guest. Controls locked.");
+                    //console.log("I am now a guest. Controls locked.");
                 }
             }
         });
@@ -874,7 +874,7 @@
         });
 
         socket.on('force-pause-room', (bufferingUserId) => {
-            console.log(`User ${bufferingUserId} is buffering. Auto-pausing...`);
+            //console.log(`User ${bufferingUserId} is buffering. Auto-pausing...`);
             internalChange = true; 
             video.pause();
             setTimeout(() => { internalChange = false; }, 300);
@@ -882,9 +882,9 @@
         });
 
         socket.on('resume-room', () => {
-            console.log("Everyone caught up. Auto-resuming...");
+            //console.log("Everyone caught up. Auto-resuming...");
             internalChange = true;
-            video.play().catch(e => console.log("Auto-resume blocked:", e));
+            video.play().catch(e => console.error("Auto-resume blocked:", e));
             setTimeout(() => { internalChange = false; }, 300);
             videoLoader.classList.remove('visible');
         });
@@ -917,13 +917,13 @@
             
             if (data.type === 'play') {
                 if (video.readyState >= 3) {
-                    video.play().catch(e => console.log("Playback failed:", e));
+                    video.play().catch(e => console.error("Playback failed:", e));
                 } else {
                     pendingPlayListener = () => {
                         internalChange = true; 
                         if (syncLockTimer) clearTimeout(syncLockTimer);
 
-                        video.play().catch(e => console.log("Delayed play failed:", e));
+                        video.play().catch(e => console.error("Delayed play failed:", e));
                         
                         syncLockTimer = setTimeout(() => { internalChange = false; }, 300);
                         pendingPlayListener = null;
@@ -968,7 +968,7 @@
         if (navigator.clipboard && navigator.clipboard.writeText) {
             navigator.clipboard.writeText(text)
             .then(() => {
-                console.log('Text copied to clipboard successfully!');
+                //console.log('Text copied to clipboard successfully!');
             })
             .catch(err => {
                 console.error('Could not copy text: ', err);
@@ -998,7 +998,7 @@
     function submitRoleChange(newRole) {
         const targetId = userMenu.getAttribute('data-target-id'); 
         
-        console.log("Sending permission change to server for User:", targetId, "New Role:", newRole);
+        //console.log("Sending permission change to server for User:", targetId, "New Role:", newRole);
         
         updateUser(targetId, null, newRole);
         
@@ -1084,7 +1084,7 @@
 
 	function togglePlay() {
 		if (!sync_perm) {
-			console.log("Guests cannot control playback.");
+			//console.log("Guests cannot control playback.");
 			return;
 		}
 		if (video.paused) {

@@ -39,7 +39,7 @@ io.on('connection', (socket) => {
     let currentRoomId = null;
 
     const list = getVideoList();
-    console.log(`Sending recursive list: ${list}`);
+    //console.log(`Sending recursive list: ${list}`);
     socket.emit('video-list', list);
 
     socket.on('request-create-room', () => {
@@ -47,7 +47,7 @@ io.on('connection', (socket) => {
         const now = Date.now();
 
         if (creationSpamFilter.has(userIp) && (now - creationSpamFilter.get(userIp) < 15000)) {
-            console.log(`Spam blocked from IP: ${userIp}`);
+            //console.log(`Spam blocked from IP: ${userIp}`);
             return socket.emit('join-error', 'Please wait 15 seconds before creating another room.');
         }
 
@@ -56,7 +56,7 @@ io.on('connection', (socket) => {
         const newID = Math.random().toString(36).substring(2, 8);
         activeRooms[newID] = {currentTime: 0, isPaused: true, host: null, users: {}, bufferingUsers: new Set()};
 
-        console.log(`Room created: ${newID} by host: ${socket.id}`);
+        //console.log(`Room created: ${newID} by host: ${socket.id}`);
         socket.emit('room-created', newID);
     });
 
@@ -72,14 +72,14 @@ io.on('connection', (socket) => {
                 if(!activeRooms[roomId].host){
                     role = 'host';
                     activeRooms[roomId].host = socket.id;
-                    console.log(`Roomid: ${currentRoomId} ${socket.id} promoted to Host`);
+                    //console.log(`Roomid: ${currentRoomId} ${socket.id} promoted to Host`);
                 }
                 users[socket.id] = {
                     role: role,
                     username:`User-${socket.id.substring(0, 4)}`
                 };
             }
-            console.log(`Roomid: ${currentRoomId} User Joined: ${socket.id}`);
+            //console.log(`Roomid: ${currentRoomId} User Joined: ${socket.id}`);
             socket.emit('join-success', users[socket.id].role);
             io.to(roomId).emit('update-user-list', activeRooms[currentRoomId].users);
         } else {
@@ -96,7 +96,7 @@ io.on('connection', (socket) => {
     socket.on('request-load-video', () => {
         if (!currentRoomId || !activeRooms[currentRoomId]) return;
         if (activeRooms[currentRoomId].video_name) {
-            console.log(`Sending current video to late joiner in ${currentRoomId}`);
+            //console.log(`Sending current video to late joiner in ${currentRoomId}`);
             socket.emit('load-new-video', activeRooms[currentRoomId].video_name);
         }
     });
@@ -127,11 +127,11 @@ io.on('connection', (socket) => {
 
         const userRole = activeRooms[currentRoomId].users[socket.id].role;
         if (userRole !== 'host' && userRole !== 'admin') {
-            console.log(`Roomid: ${currentRoomId}Permission denied for ${socket.id}`);
+            //console.log(`Roomid: ${currentRoomId}Permission denied for ${socket.id}`);
             return;
         }
 
-        console.log(`Sync-event triggered by ${socket.id}, time : ${activeRooms[currentRoomId].currentTime} -> ${data.time}, isPaused: ${activeRooms[currentRoomId].isPaused} -> ${(data.type !== 'play')} type: ${data.type}`);
+        //console.log(`Sync-event triggered by ${socket.id}, time : ${activeRooms[currentRoomId].currentTime} -> ${data.time}, isPaused: ${activeRooms[currentRoomId].isPaused} -> ${(data.type !== 'play')} type: ${data.type}`);
 
         activeRooms[currentRoomId].currentTime = data.time;
         if(data.type === 'play'){
@@ -147,7 +147,7 @@ io.on('connection', (socket) => {
     socket.on('client-buffering', () => {
         if (currentRoomId && activeRooms[currentRoomId]) {
             activeRooms[currentRoomId].bufferingUsers.add(socket.id);
-            console.log(`Room ${currentRoomId}: User ${socket.id} is buffering. Pausing room.`);
+            //console.log(`Room ${currentRoomId}: User ${socket.id} is buffering. Pausing room.`);
             if (!activeRooms[currentRoomId].isPaused) {
                 socket.to(currentRoomId).emit('force-pause-room', socket.id);
             }
@@ -157,7 +157,7 @@ io.on('connection', (socket) => {
     socket.on('client-recovered', () => {
         if (currentRoomId && activeRooms[currentRoomId]) {
             activeRooms[currentRoomId].bufferingUsers.delete(socket.id);
-            console.log(`Room ${currentRoomId}: User ${socket.id} recovered. Resuming room.`);
+            //console.log(`Room ${currentRoomId}: User ${socket.id} recovered. Resuming room.`);
             if (activeRooms[currentRoomId].bufferingUsers.size === 0 && !activeRooms[currentRoomId].isPaused) {
                 socket.to(currentRoomId).emit('resume-room');
             }
@@ -172,11 +172,11 @@ io.on('connection', (socket) => {
 
         if (targetRole || (targetID && targetID !== socket.id)) {
             if (requesterRole !== 'host' && requesterRole !== 'admin') {
-                console.log(`Exploit blocked: Guest ${socket.id} tried to change roles/users.`);
+                //console.log(`Exploit blocked: Guest ${socket.id} tried to change roles/users.`);
                 return; 
             } 
             else if(targetID && targetID !== socket.id && requesterRole === 'admin' && activeRooms[currentRoomId].users[finalID].role === 'host'){
-                console.log(`Exploit blocked: Admin ${socket.id} tried to change roles/users of host.`);
+                //console.log(`Exploit blocked: Admin ${socket.id} tried to change roles/users of host.`);
                 return; 
             }
         }
@@ -210,7 +210,7 @@ io.on('connection', (socket) => {
                 activeRooms[currentRoomId].users[finalID].role = targetRole;
             }
             
-            console.log(`Server successfully updated ${finalID} to role: ${targetRole}`);
+            //console.log(`Server successfully updated ${finalID} to role: ${targetRole}`);
             
             io.to(currentRoomId).emit('switch-permission', finalID, targetUsername, targetRole);
             io.to(currentRoomId).emit('update-user-list', activeRooms[currentRoomId].users);
@@ -232,7 +232,7 @@ io.on('connection', (socket) => {
 
             if (wasHost) {
                 activeRooms[currentRoomId].host = null;
-                console.log(`Roomid: ${currentRoomId} Host ${socket.id} left. Migrating host...`);
+                //console.log(`Roomid: ${currentRoomId} Host ${socket.id} left. Migrating host...`);
                 
                 const remainingUserIds = Object.keys(activeRooms[currentRoomId].users);
 
@@ -250,7 +250,7 @@ io.on('connection', (socket) => {
                     
                     io.to(currentRoomId).emit('switch-permission', newHostId, null, 'host');
                     io.to(currentRoomId).emit('update-user-list', activeRooms[currentRoomId].users);
-                    console.log(`Roomid: ${currentRoomId} User ${newHostId} promoted to Host.`);
+                    //console.log(`Roomid: ${currentRoomId} User ${newHostId} promoted to Host.`);
                 }
             }
 
@@ -261,7 +261,7 @@ io.on('connection', (socket) => {
 
                 if (currentSize === 0) {
                     delete activeRooms[roomToCleanup]; 
-                    console.log(`Room ${roomToCleanup} deleted because it is empty.`);
+                    //console.log(`Room ${roomToCleanup} deleted because it is empty.`);
                 }
             }, 5000);
         }
