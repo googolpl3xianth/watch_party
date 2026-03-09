@@ -18,8 +18,6 @@ let idleTimer;
 let hls = null;
 let syncLockTimer = null; 
 let internalChange = false;
-let heartbeatTimer = null;
-let heartbeatInterval = 3000;
 let pendingPlayListener = null;
 
 const wrapper = document.getElementById('video-wrapper');
@@ -36,28 +34,21 @@ const muteBtn = document.getElementById('mute-icon');
 
 export function setupVideoPlayer() {
     setUpVideoUI();
-    video.controls = false;
+
     let isBufferingLocal = false;
     let wasPlayingBeforeScrub = false;
-    let isDragging = false;
+    let mousedown = false;
+    let lastThrottleEmit = 0;
 
     if ('mediaSession' in navigator) {
         navigator.mediaSession.setActionHandler('play', () => {
-            if (State.sync_perm) {
-                togglePlay();
-            } else {
-                video.pause();
-                sync();
-            }
+            if (State.sync_perm) togglePlay();
+            else sync();
         });
         
         navigator.mediaSession.setActionHandler('pause', () => {
-            if (State.sync_perm) {
-                togglePlay();
-            } else {
-                video.pause();
-                sync();
-            }
+            if (State.sync_perm) togglePlay();
+            else sync();
         });
 
         navigator.mediaSession.setActionHandler('seekbackward', () => {
@@ -75,12 +66,90 @@ export function setupVideoPlayer() {
         });
     }
 
+    // --- 1. OUTBOUND: Host Interaction ---
+    video.addEventListener('play', () => {
+        if (internalChange) return;
+        if (!State.sync_perm) { sync(); }
+        else{ emitSync('play', video.currentTime); }
+        
+        playPauseIcon.src = "./img/pause.svg";
+        playPauseIcon.alt = "pause";
+    });
+
+    video.addEventListener('pause', () => {
+        if (internalChange) return;
+        if (!State.sync_perm) { sync(); }
+        else{ emitSync('pause', video.currentTime);}
+
+        playPauseIcon.src = "./img/play.svg";
+        playPauseIcon.alt = "play";
+    });
+
+    video.addEventListener('seeked', () => {
+        if (internalChange) return; 
+        if (!State.sync_perm) sync();
+        else emitSync('seeked', video.currentTime);
+    });
+
+    progressContainer.addEventListener('mousedown', (e) => {
+        if(!State.sync_perm) return;
+        mousedown = true;
+        wasPlayingBeforeScrub = !video.paused;
+        video.pause();
+        emitSync('pause', video.currentTime);
+        scrub(e);
+    });
+
+    window.addEventListener('mouseup', () => {
+        if (State.sync_perm && mousedown) {
+            mousedown = false;
+            if(wasPlayingBeforeScrub) {
+                video.play(); 
+                emitSync('play', video.currentTime);
+            }
+            else{
+                emitSync('pause', video.currentTime);
+            }
+        }
+    });
+
+    window.addEventListener('mousemove', (e) => {
+        if (State.sync_perm && mousedown){
+            scrub(e);
+            const now = Date.now();
+            if (now - lastThrottleEmit > 150) { 
+                emitSync('seeking', video.currentTime);
+                lastThrottleEmit = now;
+            }
+        }
+    });
+
+    setInterval(() => {
+        if (State.isHost && !video.paused && !internalChange) {
+            emitSync('heartbeat', video.currentTime);
+        }
+    }, 3000);
+
+    video.addEventListener('waiting', () => {
+        if (!isBufferingLocal) {
+            isBufferingLocal = true;
+            videoLoader.classList.add('visible');
+            if (State.hasJoined) clientBuffering();
+        }
+    });
+
+    video.addEventListener('playing', () => {
+        if (isBufferingLocal) {
+            isBufferingLocal = false;
+            videoLoader.classList.remove('visible');
+            if (State.hasJoined) clientRecovered();
+        }
+    });
+
     video.addEventListener('timeupdate', () => {
-        if (isDragging) return;
         if (video.duration) {
             const percentage = (video.currentTime / video.duration) * 100;
             progressBar.style.width = percentage + '%';
-
             const current = formatTime(video.currentTime);
             const total = formatTime(video.duration);
             timeDisplay.innerText = `${current} / ${total}`;
@@ -91,11 +160,9 @@ export function setupVideoPlayer() {
         if ([" ", "ArrowLeft", "ArrowRight"].includes(e.key)) {
             e.preventDefault();
         }
-
         if(State.sync_perm){
-            if (e.key === " " || e.code === "Space") {
-                togglePlay();
-            } else if (e.key === "ArrowRight") {
+            if (e.key === " " || e.code === "Space") togglePlay();
+            else if (e.key === "ArrowRight") {
                 video.currentTime += 5; 
                 emitSync('seeking', video.currentTime);
             } else if (e.key === "ArrowLeft") {
@@ -103,144 +170,9 @@ export function setupVideoPlayer() {
                 emitSync('seeking', video.currentTime);
             }
         }
-        if (e.key === "f"){
-            toggleFullscreen();
-        }
-        else if(e.key === "m"){
-            toggleMute();
-        }
-        else if(e.key === "c"){
-            toggleSubtitles();
-        }
-    });
-
-    // Buffering logic
-    video.addEventListener('waiting', () => {
-        if (!isBufferingLocal && video.readyState < 3) {
-            isBufferingLocal = true;
-            videoLoader.classList.add('visible');
-            
-            internalChange = true;
-            video.pause();
-            if (hls) {
-                hls.stopLoad(); // Stop downloading chunks
-            }
-            internalChange = false;
-
-            if (State.hasJoined) clientBuffering();
-        }
-    });
-
-    function clearBuffering() {
-        // If we were buffering, and we now have enough data to play (readyState >= 3)
-        if (isBufferingLocal && video.readyState >= 3) {
-            isBufferingLocal = false;
-            videoLoader.classList.remove('visible');
-            if (State.hasJoined) clientRecovered();
-        }
-    }
-
-    video.addEventListener('canplay', clearBuffering);
-    video.addEventListener('playing', clearBuffering);
-    video.addEventListener('seeked', clearBuffering);
-
-    video.addEventListener('play', () => {
-        playPauseIcon.src = "./img/pause.svg";
-        playPauseIcon.alt = "pause";
-    });
-    video.addEventListener('pause', () => {
-        playPauseIcon.src = "./img/play.svg";
-        playPauseIcon.alt = "play";
-    });
-
-    // --- 1. OUTBOUND: Host Interaction ---
-    video.addEventListener('play', () => {
-        if (internalChange) return;
-        if (!State.sync_perm) { 
-            internalChange = true;
-            video.pause();
-            internalChange = false;
-
-            if (syncLockTimer) clearTimeout(syncLockTimer);
-            syncLockTimer = setTimeout(() => { 
-                internalChange = true;
-                video.pause(); 
-                internalChange = false; 
-            }, 150);
-            
-            sync(); 
-            return;
-        }
-        emitSync('play', video.currentTime);
-    });
-
-    video.addEventListener('pause', () => {
-        if (internalChange) return;
-        if (!State.sync_perm) { 
-            sync(); 
-            return;
-        }
-        emitSync('pause', video.currentTime);
-    });
-
-    video.addEventListener('seeked', () => {
-        if (internalChange) return; 
-        if (isDragging) return;
-        if (!State.sync_perm) { sync(); }
-        else emitSync('seeked', video.currentTime);
-    });
-
-    progressContainer.addEventListener('mousedown', (e) => {
-        if(!State.sync_perm) return;
-        isDragging = true;
-        wasPlayingBeforeScrub = !video.paused;
-
-        internalChange = true;
-        video.pause();
-        internalChange = false;
-
-        sync();
-        updateVisualScrub(e);
-    });
-
-    window.addEventListener('mouseup', (e) => {
-        if (State.sync_perm && isDragging) {
-            isDragging = false;
-            
-            const rect = progressContainer.getBoundingClientRect();
-            let x = Math.max(0, Math.min(e.clientX - rect.left, rect.width)); 
-            const finalTime = (x / rect.width) * video.duration;
-            
-            if (!isNaN(finalTime)) {
-                internalChange = true;
-                video.currentTime = finalTime;
-                
-                video.addEventListener('seeked', () => { 
-                    internalChange = false; 
-                    if(wasPlayingBeforeScrub) {
-                        emitSync('play', video.currentTime);
-                    } else {
-                        emitSync('pause', video.currentTime);
-                    }
-                }, {once: true});
-            }
-        }
-    });
-    window.addEventListener('mousemove', (e) => {
-        if (State.sync_perm && isDragging){
-            updateVisualScrub(e); 
-        }
-    });
-
-    if (heartbeatTimer) clearInterval(heartbeatTimer);
-    heartbeatTimer = setInterval(() => {
-        if (State.isHost && !video.paused && !internalChange) {
-            emitSync('heartbeat', video.currentTime);
-        }
-    }, heartbeatInterval);
-
-    document.getElementById('volume-slider').addEventListener('input', (e) => {
-        video.volume = e.target.value;
+        if (e.key === "f") toggleFullscreen();
+        else if(e.key === "m") toggleMute();
+        else if(e.key === "c") toggleSubtitles();
     });
 
     wrapper.addEventListener('mousemove', resetIdleTimer);
@@ -252,12 +184,26 @@ export function setupVideoPlayer() {
 }
 
 export function setUpVideoUI(){
+    video.controls = false;
     document.getElementById('screen-play-btn').addEventListener('click', togglePlay);
     document.getElementById('play-pause-btn').addEventListener('click', togglePlay);
     document.getElementById('sync-btn').addEventListener('click', sync);
     document.getElementById('mute-btn').addEventListener('click', toggleMute);
     document.getElementById('subtitle-btn').addEventListener('click', toggleSubtitles);
     document.getElementById('fullscreen-btn').addEventListener('click', toggleFullscreen);
+    document.getElementById('volume-slider').addEventListener('input', (e) => {video.volume = e.target.value;});
+}
+
+export function handleApplySync(data) {
+    const timeDiff = Math.abs(video.currentTime - data.time);
+
+    if (data.type !== 'heartbeat' || timeDiff > SYNC_THRESHOLD) {
+        if (video.readyState >= 1) { 
+            executeSync(data);
+        } else {
+            video.addEventListener('loadedmetadata', () => executeSync(data), { once: true });
+        }
+    }
 }
 
 export function joinVideo(){
@@ -289,6 +235,7 @@ export async function setupVideo(filename) {
         hls.destroy();
         hls = null;
     }
+
     video.innerHTML = '';
     ccBtn.style.display = 'none'; 
 
@@ -446,12 +393,7 @@ export async function setupVideo(filename) {
     }
 }
 
-export function executeSync(data) {
-    const timeDiff = Math.abs(video.currentTime - data.time);
-    if (data.type === 'heartbeat' && timeDiff <= SYNC_THRESHOLD) {
-        return;
-    }
-
+function executeSync(data) {
     internalChange = true;
     if (syncLockTimer) clearTimeout(syncLockTimer);
 
@@ -463,7 +405,6 @@ export function executeSync(data) {
     const needsSeek = Math.abs(video.currentTime - data.time) > 0.1;
 
     if (needsSeek) {
-        internalChange = true;
         if (video.readyState >= 1) {
             video.currentTime = data.time;
         } else {
@@ -473,36 +414,31 @@ export function executeSync(data) {
         }
 
         video.addEventListener('seeked', () => {
-            setTimeout(() => { internalChange = false; }, 50);
+            if (syncLockTimer) clearTimeout(syncLockTimer);
+            syncLockTimer = setTimeout(() => { internalChange = false; }, 100);
         }, { once: true });
     }
     
     if (data.type === 'play') {
         if (video.readyState >= 3) {
-            internalChange = true;
-            video.play().then(() => {
-                internalChange = false;
-            }).catch(e => {
-                console.error("Playback failed:", e);
-                internalChange = false;
-            });
+            video.play().catch(e => console.log("Playback failed:", e));
         } else {
             pendingPlayListener = () => {
                 internalChange = true; 
-                video.play().then(() => {
-                    internalChange = false;
-                }).catch(e => {
-                    console.error("Delayed play failed:", e);
-                    internalChange = false;
-                });
+                if (syncLockTimer) clearTimeout(syncLockTimer);
+                video.play().catch(e => console.log("Delayed play failed:", e));
+                
+                syncLockTimer = setTimeout(() => { internalChange = false; }, 300);
                 pendingPlayListener = null;
             };
             video.addEventListener('canplay', pendingPlayListener, { once: true });
         }
     } else if (data.type === 'pause') {
-        internalChange = true;
         video.pause();
-        internalChange = false;
+    }
+
+    if (!needsSeek) {
+        syncLockTimer = setTimeout(() => { internalChange = false; }, 300);
     }
 }
 
@@ -524,12 +460,9 @@ export function bufferPause(){
     videoLoader.classList.add('visible');
 }
 
-export function bufferPlay(){
+export function bufferPlay() {
     internalChange = true;
-    if (hls) {
-        hls.startLoad();
-    }
-    video.play().catch(e => console.error("Auto-resume blocked:", e));
+    video.play().catch(e => console.log("Auto-resume blocked:", e));
     setTimeout(() => { internalChange = false; }, 300);
     videoLoader.classList.remove('visible');
 }
@@ -538,23 +471,11 @@ export function getVideoData(){
     return {currentTime: video.currentTime, paused: video.paused };
 }
 
-export function getVideoReadyState(){
-    return video.readyState;
-}
-
-export function addMetaDataListener(data){
-    video.addEventListener('loadedmetadata', () => executeSync(data), { once: true });
-}
-
 function resetIdleTimer() {
     wrapper.classList.remove('is-idle');
-
     clearTimeout(idleTimer);
-
     idleTimer = setTimeout(() => {
-        if (!video.paused) {
-            wrapper.classList.add('is-idle');
-        }
+        if (!video.paused) wrapper.classList.add('is-idle');
     }, 2000);
 }
 
@@ -618,16 +539,11 @@ function toggleSubtitles() {
     }
 }
 
-function updateVisualScrub(e) {
+function scrub(e) {
     const rect = progressContainer.getBoundingClientRect();
-    let x = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
-    const scrubTime = (x / rect.width) * video.duration;
-    
-    if (!isNaN(scrubTime)) {
-        const percentage = (scrubTime / video.duration) * 100;
-        progressBar.style.width = percentage + '%';
-        timeDisplay.innerText = `${formatTime(scrubTime)} / ${formatTime(video.duration)}`;
-    }
+    const x = e.clientX - rect.left;
+    const scrubTime = (x / progressContainer.offsetWidth) * video.duration;
+    if (!isNaN(scrubTime)) video.currentTime = scrubTime;
 }
 
 export function formatTime(seconds) {

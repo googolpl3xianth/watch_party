@@ -39,7 +39,7 @@ export function setupRoomUI() {
     document.getElementById('get-room-link-btn').addEventListener('click', getRoomLink);
     document.getElementById('edit-name-btn').addEventListener('click', rename);
     document.getElementById('home-btn').addEventListener('click', goHome);
-    document.getElementById('load-video-btn').addEventListener('click', requestChange);
+    document.getElementById('load-video-btn').addEventListener('click', () => requestChange());
 
     document.getElementById('user-count-btn').addEventListener('click', getUserList);
     document.getElementById('change-role-btn').addEventListener('click', (event) => {getRoleList(event)});

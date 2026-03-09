@@ -1,6 +1,6 @@
 // js/network.js
 import { State } from './state.js';
-import { setupVideo, executeSync, getVideoReadyState, getVideoData, addMetaDataListener, bufferPause, bufferPlay } from './video.js';
+import { setupVideo, handleApplySync, getVideoData, bufferPause, bufferPlay } from './video.js';
 import { showRoom, showGate, showRoomStatus, showPermOnly, setVideoSelect, updateUserCount, updateUserList, removeUser, getSelectedVideo, setupLobbyUI} from './ui.js';
 
 export const socket = io({secure: true, transports: ['websocket'] });
@@ -88,6 +88,7 @@ function setupSocketLogic() {
 
     // --- 2. INBOUND: Everyone ---
     socket.on('load-new-video', (filename) => {
+        if (State.currentVideoFilename === filename || !filename) return;
         showRoomStatus();
         State.currentVideoFilename = filename;
         //console.log("Switching to:", filename);
@@ -115,11 +116,7 @@ function setupSocketLogic() {
         if (now - lastOutboundTime < 500 && data.type === 'heartbeat') return;
         if (now - lastOutboundTime < 200) return; // Minimum "cool down" to prevent loops
 
-        if (getVideoReadyState() >= 1) { 
-            executeSync(data);
-        } else {
-            addMetaDataListener(data);
-        }
+        handleApplySync(data);
     });
 
     socket.on('force-pause-room', (bufferingUserId) => {
@@ -147,8 +144,8 @@ export function checkSubtitles(filename, callback) {
 }
 
 // UI logic
-export function requestChange() {
-    const selectedFile = getSelectedVideo();
+export function requestChange(filename) {
+    const selectedFile = filename || getSelectedVideo();
     if (selectedFile) {
         socket.emit('request-video-change', selectedFile);
     }

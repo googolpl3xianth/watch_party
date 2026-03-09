@@ -168,7 +168,7 @@ io.on('connection', (socket) => {
             activeRooms[currentRoomId].bufferingUsers.add(socket.id);
             //console.log(`Room ${currentRoomId}: User ${socket.id} is buffering. Pausing room.`);
             if (!activeRooms[currentRoomId].isPaused) {
-                io.in(currentRoomId).emit('force-pause-room', socket.id);
+                socket.to(currentRoomId).emit('force-pause-room', socket.id);
             }
         }
     });
@@ -178,7 +178,7 @@ io.on('connection', (socket) => {
             activeRooms[currentRoomId].bufferingUsers.delete(socket.id);
             //console.log(`Room ${currentRoomId}: User ${socket.id} recovered. Resuming room.`);
             if (activeRooms[currentRoomId].bufferingUsers.size === 0 && !activeRooms[currentRoomId].isPaused) {
-                io.in(currentRoomId).emit('resume-room');
+                socket.to(currentRoomId).emit('resume-room');
             }
         }
     });
