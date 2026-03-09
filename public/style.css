@@ -106,8 +106,8 @@ body {
 
 #room-header {
     position: fixed;
-    top: 5vmin;
-    left: 5vmin;
+    top: 30px;
+    left: 30px;
     display: flex;
     align-items: center; 
     gap: 10px;   
@@ -414,8 +414,8 @@ video::-webkit-media-text-track-container {
     display: flex;
     align-items: center;
     position: fixed;
-    top: 5vmin;
-    right: 5vmin;
+    top: 30px;
+    right: 30px;
     justify-content: flex-end;
     isolation: isolate;
     flex-direction: column;
