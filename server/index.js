@@ -6,7 +6,7 @@ const io = require('socket.io')(3000, {
 });
 
 const creationSpamFilter = new Map();
-const roomSpamTimer = 0 //15000
+const roomSpamTimer = 15000 //15000
 
 const activeRooms = {}; // Memory to store { roomId: { video_name, time, isPaused, users: [{socket.id, username, permision}] } }
 
