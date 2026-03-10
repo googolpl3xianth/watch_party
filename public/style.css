@@ -1,24 +1,71 @@
-/* =========================================
-   1. GLOBAL & LOBBY LAYOUT
-   ========================================= */
-body {
-    background-color: #121212;
-    color: white;
-    font-family: sans-serif;
-    margin: 0;
+:root {
+    /* Colors */
+    --bg-main: #121212;
+    --bg-card: #1e1e1e;
+    --text-primary: #ffffff;
+    --text-secondary: #888888;
+    --accent-color: #ff0000;
+    --error-color: #ff4444;
+    
+    /* Geometry */
+    --border-radius: 8px;
+    
+    /* Z-Index System (Never guess layers again!) */
+    --z-base: 1;
+    --z-dropdown: 100;
+    --z-header: 1000;
+    --z-overlay: 2000;
+    --z-loader: 9999;
 }
 
+/* =========================================
+   1. RESET & GLOBAL LAYOUT
+   ========================================= */
+*, *::before, *::after {
+    box-sizing: border-box;
+}
+
+body {
+    background-color: var(--bg-main);
+    color: var(--text-primary);
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    margin: 0;
+    -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3, h4, p {
+    margin: 0; /* Reset default margins */
+}
+
+/* --- STATE CLASSES --- */
+html.direct-join #lobby {
+    display: none !important;
+}
+
+html.direct-join #page-loader {
+    display: block !important;
+    position: fixed; 
+}
+
+/* =========================================
+   2. LOBBY UI
+   ========================================= */
 #lobby {
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    min-height: 80vh;
+    min-height: 100vh; /* Better than 80vh for true centering */
     text-align: center;
+    padding: 20px;
+}
+
+#lobby h1 {
+    margin-bottom: 20px;
 }
 
 .lobby-card {
-    background: #1e1e1e;
+    background: var(--bg-card);
     padding: 30px 40px;
     border-radius: 12px;
     box-shadow: 0 10px 30px rgba(0,0,0,0.5);
@@ -29,35 +76,60 @@ body {
     max-width: 350px;
 }
 
-.lobby-card button {
+/* =========================================
+   Buttons
+   ========================================= */
+
+.primary-btn {
+    background: var(--text-primary);
+    color: #000000;
     padding: 12px 24px;
     font-size: 1.1rem;
-    border-radius: 8px;
+    border-radius: var(--border-radius);
     border: none;
     cursor: pointer;
     font-weight: bold;
-    transition: transform 0.1s, opacity 0.2s;
+    transition: transform 0.1s ease, opacity 0.2s ease;
 }
-
-.lobby-card button:hover { opacity: 0.9; }
-.lobby-card button:active { transform: scale(0.96); }
-
-.primary-btn {
-    background: #ffffff; /* Or whatever your accent color is */
-    color: #000000;
-    width: 100%;
-}
+.primary-btn:hover { opacity: 0.9; }
+.primary-btn:active { transform: scale(0.96); }
 
 .secondary-btn {
     background: #333333;
-    color: white;
+    color: var(--text-primary);
+    padding: 12px 24px;
+    font-size: 1.1rem;
+    border-radius: var(--border-radius);
+    border: none;
+    cursor: pointer;
+    font-weight: bold;
+    transition: transform 0.1s ease, opacity 0.2s ease;
+}
+.secondary-btn:hover { opacity: 0.9; }
+.secondary-btn:active { transform: scale(0.96); }
+
+.pill-btn{
+    display: flex;
+    align-items: center;     
+    justify-content: center; 
+    gap: 8px;           
+    background: var(--bg-card);
+    border: 1px solid #333;
+    color: var(--text-primary);
+    cursor: pointer;
+    padding: 8px 16px;
+    border-radius: 20px;
+    transition: background 0.2s ease;
 }
 
-/* The 'OR' line */
+.pill-btn:hover {
+    background: #333;
+}
+
 .divider {
     display: flex;
     align-items: center;
-    color: #888;
+    color: var(--text-secondary);
     font-size: 0.9rem;
     font-weight: bold;
 }
@@ -65,43 +137,50 @@ body {
 .divider::before, .divider::after {
     content: "";
     flex: 1;
-    border-bottom: 1px solid #444;
+    border-bottom: 1px solid var(--text-secondary);
     margin: 0 10px;
 }
 
 .join-box {
     display: flex;
     gap: 10px;
+    width: 100%;
 }
 
 #room-code-input {
     flex-grow: 1;
+    min-width: 0;
     padding: 12px;
     font-size: 1.1rem;
-    border-radius: 8px;
+    border-radius: var(--border-radius);
     border: 2px solid #333;
-    background: #121212;
-    color: white;
+    background: var(--bg-main);
+    color: var(--text-primary);
     text-align: center;
     outline: none;
     transition: border-color 0.2s;
 }
 
-#room-code-input:focus {
-    border-color: #ffffff;
+#join-room-btn {
+    flex-shrink: 0;
 }
 
+#room-code-input:focus { border-color: var(--text-primary); }
+
+.error-text {
+    color: var(--error-color);
+    font-weight: bold;
+    font-size: 0.9rem;
+    display: none;
+}
+
+/* =========================================
+   3. ROOM INTERFACE & HEADER
+   ========================================= */
 #room-interface {
     display: none;
     text-align: center;
-}
-
-#room-title {
-    display: flex;
-    align-items: center; 
-    justify-content: center;
-    gap: 5px; 
-    margin-bottom: 15px;      
+    padding: 20px;
 }
 
 #room-header {
@@ -111,26 +190,44 @@ body {
     display: flex;
     align-items: center; 
     gap: 10px;   
-    z-index: 1000;
+    z-index: var(--z-header);
 }
 
-#room-header h2 {
-    margin: 0;
-    font-size: 1.5rem; /* Adjust this to match your design */
-}
-
-#home-btn{
+#room-title {
     display: flex;
+    align-items: center; 
+    justify-content: center;
+    gap: 5px; 
+    margin: 40px 0 15px 0;      
+}
+
+#media-controls { 
+    margin-bottom: 20px; 
+    display: flex;
+    flex-direction: row; /* Puts them side by side */
     align-items: center;
     justify-content: center;
+    gap: 10px;
+    width: 100%;
 }
 
-#media-controls {
-    margin-bottom: 20px;
+.select-class {
+    width: 100%;
+    max-width: 300px;
+    padding: 12px;
+    border-radius: var(--border-radius);
+    background: var(--bg-card);
+    color: var(--text-primary);
+    border: 1px solid #444;
+    text-overflow: ellipsis;
+    overflow: hidden;
+    white-space: nowrap;
+    cursor: pointer;
+    font-size: 1rem;
 }
 
 /* =========================================
-   2. JOIN GATE
+   4. JOIN GATE & VIDEO WRAPPER
    ========================================= */
 #join-gate {
     display: none;
@@ -142,31 +239,9 @@ body {
     max-width: 800px;
     aspect-ratio: 16 / 9;
     margin: 20px auto; 
+    border-radius: var(--border-radius);
 }
 
-#join-btn {
-    align-items: center;
-    object-fit: contain;
-    position: relative;
-    padding: 10px 20px;
-    cursor: pointer;
-    font-size: 1rem;
-}
-
-#status{
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    text-align: center;
-    position: absolute;
-    inset: 0;
-    margin: auto; 
-    z-index: 9999;
-}
-
-/* =========================================
-   3. VIDEO WRAPPER & PLAYER
-   ========================================= */
 #video-wrapper {
     background-color: black;
     position: relative;
@@ -179,6 +254,7 @@ body {
     align-items: center;
     justify-content: center;
     isolation: isolate;
+    border-radius: var(--border-radius);
 }
 
 #myVideo {
@@ -187,17 +263,13 @@ body {
     height: 100%;
     object-fit: contain;
     background-color: transparent;
-    
     position: relative;
-    z-index: 1;
+    z-index: var(--z-base);
     opacity: 0.999;
     transform: perspective(1px) translateZ(0);
-    -webkit-transform: perspective(1px) translateZ(0);
     will-change: transform, filter;
-    filter: blur(0px); 
 }
 
-/* --- FULLSCREEN RULES --- */
 #video-wrapper:fullscreen,
 #video-wrapper:-webkit-full-screen {
     width: 100% !important;
@@ -205,90 +277,68 @@ body {
     max-width: none !important;
     aspect-ratio: auto !important;
     margin: 0 !important;
+    border-radius: 0;
 }
 
-#screen-play-btn{
+#screen-play-btn {
     background-color: transparent;
-    border: 0; 
-    opacity: 1; 
+    border: none; 
     position: absolute;
-    display: flex;
     width: 100%;
-    height: 100% ;
-    bottom: 0;
-    top: 0;
-    left: 0;
-    right: 0;
-    z-index: 1000;
+    height: 100%;
+    top: 0; left: 0;
+    z-index: var(--z-header);
 }
 
 /* =========================================
-   4. CUSTOM OVERLAY & CONTROLS
+   5. VIDEO CONTROLS OVERLAY
    ========================================= */
 .video-overlay {
     display: none; 
     position: absolute;
-    bottom: 0;
-    left: 0;
-    right: 0;
+    bottom: 0; left: 0; right: 0;
     background: linear-gradient(transparent, rgba(0, 0, 0, 0.8));
     align-items: center;
     justify-content: space-between;
-    padding: 5px 10px;
+    padding: 15px 10px 10px 10px; /* Extra top padding for gradient fade */
     gap: 5px;
     opacity: 1; 
-    transition: opacity 0.5s;
-    transform: translateZ(0);
+    transition: opacity 0.5s ease;
     pointer-events: auto;
-    z-index: 2147483647 !important; 
+    z-index: var(--z-overlay); 
+    margin: 0; /* Reset figure default */
 }
 
-/* --- IDLE STATE (HIDES CONTROLS & CURSOR) --- */
-#video-wrapper.is-idle {
-    cursor: none !important; 
-}
-
+#video-wrapper.is-idle { cursor: none !important; }
 #video-wrapper.is-idle .video-overlay {
     opacity: 0 !important;
     pointer-events: none !important; 
 }
 
-/* --- BUTTONS & ICONS --- */
 .control-btn {
     background: transparent;
     border: none;
-    color: white;
+    color: var(--text-primary);
     cursor: pointer;
     transition: transform 0.1s ease;
+    padding: 5px;
 }
 
-.control-btn:active {
-    transform: scale(0.9);
-}
-
-.control-btn svg {
-    display: block;
-    transition: transform 0.2s;
-}
-
-.control-btn:hover svg {
-    transform: scale(1.1);
-    color: #ff0000;
-}
+.control-btn:active { transform: scale(0.9); }
+.control-btn svg { display: block; transition: transform 0.2s; }
+.control-btn:hover { transform: scale(1.1); color: var(--accent-color); }
 
 #quality-selector {
     appearance: none; 
-    -webkit-appearance: none; /* Fallback for older Safari/Chrome browsers */
+    -webkit-appearance: none; 
     outline: none;
     font-weight: bold;
-    padding: 0 10px;
+    padding: 0 5px;
 }
 
-#quality-selector option {
-    color: black;
-}
+#quality-selector option { color: black; }
 
-/* --- PROGRESS BAR --- */
+/* Progress Bar */
 .progress-container {
     flex-grow: 1; 
     height: 8px;
@@ -296,47 +346,39 @@ body {
     border-radius: 4px;
     margin: 0 15px;
     cursor: default;
-    overflow: visible;
     position: relative;
 }
 
 .progress-filled {
     height: 100%;
     width: 0%; 
-    background: #ff0000; 
+    background: var(--accent-color); 
     pointer-events: none;
+    border-radius: 4px;
 }
 
-.mouse-interact {
-    cursor: pointer !important;
-}
+.mouse-interact { cursor: pointer !important; }
 
 .time-text {
-    color: white;
-    font-family: sans-serif;
+    color: var(--text-primary);
     font-size: 14px;
     margin: 0 10px;
     white-space: nowrap;
 }
 
-/* --- SUBTITLES --- */
+/* =========================================
+   6. SUBTITLES & CUES
+   ========================================= */
 video::cue {
     background: transparent;
-    background-color: transparent;
-    color: #ffffff;
+    color: var(--text-primary);
     font-family: "Trebuchet MS", "Arial", sans-serif; 
     font-weight: bold;
     -webkit-text-stroke: 1.5px black; 
     text-shadow: 
-        -1.5px -1.5px 0 #000,  
-         0px   -1.5px 0 #000,
-         1.5px -1.5px 0 #000,
-         1.5px  0px   0 #000,
-         1.5px  1.5px 0 #000,
-         0px    1.5px 0 #000,
-        -1.5px  1.5px 0 #000,
-        -1.5px  0px   0 #000,
-         0px    3px   6px rgba(0,0,0,0.9);
+        -1.5px -1.5px 0 #000, 0px -1.5px 0 #000, 1.5px -1.5px 0 #000,
+        1.5px 0px 0 #000, 1.5px 1.5px 0 #000, 0px 1.5px 0 #000,
+        -1.5px 1.5px 0 #000, -1.5px 0px 0 #000, 0px 3px 6px rgba(0,0,0,0.9);
 }
 
 video::-webkit-media-text-track-container {
@@ -348,161 +390,130 @@ video::-webkit-media-text-track-container {
     transform: translateY(-10px); 
 }
 
-/* --- UTILITIES --- */
+/* =========================================
+   7. SIDEBAR & MENUS
+   ========================================= */
+#sidebar-wrapper {
+    display: flex;
+    align-items: center;
+    position: fixed;
+    top: 30px; right: 30px;
+    flex-direction: column;
+    z-index: var(--z-header);
+}
+
+.users { position: relative; display: inline-block; }
+
+#user-count-text { font-weight: bold; font-size: 1.1rem; }
+
+.user-list {
+    display: none;
+    position: absolute;
+    top: 100%; right: 0;
+    background-color: var(--bg-card); 
+    min-width: 160px;  
+    box-shadow: 0px 8px 16px rgba(0,0,0,0.5);
+    border-radius: var(--border-radius);
+    z-index: var(--z-dropdown); 
+    overflow: hidden;
+}
+
+.user-item {
+    color: var(--text-primary);
+    padding: 10px 15px;
+    border-bottom: 1px solid #333;
+    cursor: context-menu;
+    font-size: 0.9rem;
+}
+
+.user-item:last-child { border-bottom: none; }
+.user-item:hover { background-color: #333; }
+
+/* Context Menus */
+.context-menu {
+    display: none;
+    position: absolute;
+    background-color: #2b2b2b; /* Slightly lighter than the background */
+    min-width: 180px;
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.6);
+    border: 1px solid #444; /* Crisp OS-style edge */
+    border-radius: 6px;
+    padding: 6px 0; /* Spacing at the very top and bottom of the menu */
+    z-index: var(--z-overlay);
+    right: 100%; left: auto;
+}
+
+.context-item {
+    background: transparent;
+    border: none;
+    color: var(--text-primary);
+    padding: 10px 16px;
+    width: 100%;
+    text-align: left;
+    font-size: 0.95rem;
+    cursor: pointer;
+    font-family: inherit;
+    transition: background-color 0.1s ease;
+}
+
+.context-item:hover { 
+    background-color: #007bff; /* Classic UI selection blue. You can change this to #444 if you prefer dark gray */
+    color: #fff;
+}
+
+#role-menu {
+    right: 100%; left: auto;
+    top: 0; margin-top: -1px;
+}
+
+.visible { display: block !important; }
+
+/* =========================================
+   8. UTILITIES & ANIMATIONS
+   ========================================= */
 .perms-only { display: none; }
 .show-perms { display: block; }
 .host-only { display: none; }
 .show-host { display: block !important; }
 .guest-only { display: none; }
-.show-guest {display: block; }
+.show-guest { display: block; }
 
 .clean-btn {
     background: transparent;
     border: none;
-    padding: 0;
+    padding: 8px;
+    border-radius: 50%;
     margin: 0;
     cursor: pointer;
     display: flex;
     align-items: center; 
     justify-content: center;
+    transition: background-color 0.2s ease;
 }
 
 .clean-btn:hover {
-    opacity: 0.7;
-    transform: scale(1.05);
-    transition: all 0.2s ease;
+    background-color: rgba(255, 255, 255, 0.1); /* Subtle modern highlight */
 }
 
+/* Global Loader */
 .loader {
     width: 10%;
     max-width: 60px;
     min-width: 30px;
     aspect-ratio: 1 / 1;
-
     position: absolute;
-    inset: 0;
-    margin: auto; 
-    z-index: 9999;
-
+    inset: 0; margin: auto; 
+    z-index: var(--z-loader);
     border: 5px solid #FFF;
     border-bottom-color: transparent;
     border-radius: 50%;
-    display: inline-block;
-    box-sizing: border-box;
     animation: rotation 1s linear infinite;
     display: none;
 }
 
+.loader.visible { display: block; }
+
 @keyframes rotation {
-    0% {
-        transform: rotate(0deg);
-    }
-    100% {
-        transform: rotate(360deg);
-    }
-} 
-
-.loader.visible {
-    display: block;
-}
-
-/* =========================================
-   7. sidebar WRAPPER
-   ========================================= */
-
-#sidebar-wrapper{
-    display: flex;
-    align-items: center;
-    position: fixed;
-    top: 30px;
-    right: 30px;
-    justify-content: flex-end;
-    isolation: isolate;
-    flex-direction: column;
-}
-
-/* --- User list --- */ 
-.users {
-  position: relative;
-  display: inline-block;
-}
-
-#user-count-btn {
-    display: flex;
-    align-items: center;     
-    justify-content: center; 
-    gap: 8px;           
-}
-
-#user-count-btn img {
-    display: block;       
-    margin: 0;  
-}
-
-#user-count-text {
-    line-height: 1;     
-    font-weight: bold;
-}
-
-.user-list {
-  display: none;
-  position: absolute;
-  top: 100%; 
-  right: 0;
-  background-color: #f9f9f9; 
-  min-width: 160px;  
-  box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2);
-  z-index: 100; 
-}
-
-.user-item{
-    color: black;
-    padding: 5px;
-    border-bottom: 1px solid #ccc;
-    cursor: context-menu;
-}
-
-.user-item:last-child {
-    border-bottom: none;
-}
-
-.user-item:hover {
-    background-color: #e9e9e9;
-}
-
-#role-menu{
-    right: 100%; 
-    left: auto;
-    top: 0; 
-    margin-top: -1px;
-}
-
-.context-menu {
-    display: none;
-    position: absolute;
-    background-color: #f9f9f9;
-    min-width: 160px;
-    box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2);
-    z-index: 1000;
-    right: 100%; 
-    left: auto;
-}
-
-.context-menu a {
-    color: black;
-    text-decoration: none;
-    display: block;
-    cursor: pointer; 
-}
-
-.context-menu a:hover {
-    background-color: #ddd;
-}
-
-.perms-menu{
-    z-index: 10000;
-}
-
-.visible {
-    display: block;
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
 }

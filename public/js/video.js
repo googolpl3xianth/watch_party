@@ -12,7 +12,12 @@ const hlsConfig = {
     maxStarvationDelay: 2,
     enableWorker: true
 }
-const SYNC_THRESHOLD = 1.5;
+const CONFIG = {
+    SYNC_THRESHOLD_SECONDS: 1.5,
+    LOCK_TIMEOUT_MS: 300,
+    HEARTBEAT_INTERVAL_MS: 3000,
+    SEEK_SKIP_SECONDS: 5
+};
 
 let idleTimer;
 let hls = null;
@@ -53,14 +58,14 @@ export function setupVideoPlayer() {
 
         navigator.mediaSession.setActionHandler('seekbackward', () => {
             if (State.sync_perm) {
-                video.currentTime -= 5;
+                video.currentTime -= CONFIG.SEEK_SKIP_SECONDS;
                 emitSync('seeking', video.currentTime);
             } else sync();
         });
 
         navigator.mediaSession.setActionHandler('seekforward', () => {
             if (State.sync_perm) {
-                video.currentTime += 5;
+                video.currentTime += CONFIG.SEEK_SKIP_SECONDS;
                 emitSync('seeking', video.currentTime);
             } else sync();
         });
@@ -128,7 +133,7 @@ export function setupVideoPlayer() {
         if (State.isHost && !video.paused && !internalChange) {
             emitSync('heartbeat', video.currentTime);
         }
-    }, 3000);
+    }, CONFIG.HEARTBEAT_INTERVAL_MS);
 
     video.addEventListener('waiting', () => {
         if (!isBufferingLocal) {
@@ -163,10 +168,10 @@ export function setupVideoPlayer() {
         if(State.sync_perm){
             if (e.key === " " || e.code === "Space") togglePlay();
             else if (e.key === "ArrowRight") {
-                video.currentTime += 5; 
+                video.currentTime += CONFIG.SEEK_SKIP_SECONDS; 
                 emitSync('seeking', video.currentTime);
             } else if (e.key === "ArrowLeft") {
-                video.currentTime -= 5;
+                video.currentTime -= CONFIG.SEEK_SKIP_SECONDS;
                 emitSync('seeking', video.currentTime);
             }
         }
@@ -197,7 +202,7 @@ export function setUpVideoUI(){
 export function handleApplySync(data) {
     const timeDiff = Math.abs(video.currentTime - data.time);
 
-    if (data.type !== 'heartbeat' || timeDiff > SYNC_THRESHOLD) {
+    if (data.type !== 'heartbeat' || timeDiff > CONFIG.SYNC_THRESHOLD_SECONDS) {
         if (video.readyState >= 1) { 
             executeSync(data);
         } else {
@@ -335,16 +340,17 @@ export async function setupVideo(filename) {
 
             hls.on(Hls.Events.LEVEL_SWITCHED, function(event, data) {
                 const activeLevel = hls.levels[data.level];
-                const currentHeight = activeLevel.height;
-                
-                //console.log(`[HLS] Seamlessly switched to: ${currentHeight}p`);
-
+                let labelName = `Auto (${activeLevel.height})`;
+            
                 const qualitySelector = document.getElementById('quality-selector');
                 
                 if (qualitySelector.value === "-1") {
                     const autoOption = qualitySelector.querySelector('option[value="-1"]');
                     if (autoOption) {
-                        autoOption.textContent = `Auto (${currentHeight}p)`;
+                        if (activeLevel.width === 1920) labelName = "Auto (1080p)";
+                        else if (activeLevel.width === 1280) labelName = "Auto (720p)";
+                        else if (activeLevel.width === 854) labelName = "Auto (480p)";
+                        autoOption.textContent = labelName;
                     }
                 }
             });
@@ -428,7 +434,7 @@ function executeSync(data) {
                 if (syncLockTimer) clearTimeout(syncLockTimer);
                 video.play().catch(e => console.log("Delayed play failed:", e));
                 
-                syncLockTimer = setTimeout(() => { internalChange = false; }, 300);
+                syncLockTimer = setTimeout(() => { internalChange = false; }, CONFIG.LOCK_TIMEOUT_MS);
                 pendingPlayListener = null;
             };
             video.addEventListener('canplay', pendingPlayListener, { once: true });
@@ -438,7 +444,7 @@ function executeSync(data) {
     }
 
     if (!needsSeek) {
-        syncLockTimer = setTimeout(() => { internalChange = false; }, 300);
+        syncLockTimer = setTimeout(() => { internalChange = false; }, CONFIG.LOCK_TIMEOUT_MS);
     }
 }
 
