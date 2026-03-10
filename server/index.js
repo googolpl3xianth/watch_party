@@ -6,20 +6,22 @@ const io = require('socket.io')(3000, {
 });
 
 const creationSpamFilter = new Map();
+const roomSpamTimer = 15000 //15000
 
 const activeRooms = {}; // Memory to store { roomId: { video_name, time, isPaused, users: [{socket.id, username, permision}] } }
 
 const fs = require('fs');
+const fsPromises = fs.promises;
 const path = require('path');
-function getVideoList(dir = '/videos', allFiles = []) {
+async function getVideoList(dir = '/videos', allFiles = []) {
     try {
-        const files = fs.readdirSync(dir, { withFileTypes: true });
+        const files = await fsPromises.readdir(dir, { withFileTypes: true });
 
         for (const file of files) {
             const fullPath = path.join(dir, file.name);
             
             if (file.isDirectory()) {
-                getVideoList(fullPath, allFiles);
+                await getVideoList(fullPath, allFiles);
             } else {
                 if (file.name === 'master.m3u8') {
                     const folderName = path.basename(path.dirname(fullPath));
@@ -38,15 +40,16 @@ function getVideoList(dir = '/videos', allFiles = []) {
 io.on('connection', (socket) => {
     let currentRoomId = null;
 
-    const list = getVideoList();
-    //console.log(`Sending recursive list: ${list}`);
-    socket.emit('video-list', list);
+    getVideoList().then(list => {
+        socket.emit('video-list', list);
+    });
 
+    // Room creation
     socket.on('request-create-room', () => {
         const userIp = socket.handshake.headers['x-real-ip'] || socket.handshake.address;
         const now = Date.now();
 
-        if (creationSpamFilter.has(userIp) && (now - creationSpamFilter.get(userIp) < 15000)) {
+        if (creationSpamFilter.has(userIp) && (now - creationSpamFilter.get(userIp) < roomSpamTimer)) {
             //console.log(`Spam blocked from IP: ${userIp}`);
             return socket.emit('join-error', 'Please wait 15 seconds before creating another room.');
         }
@@ -87,6 +90,7 @@ io.on('connection', (socket) => {
         }
     });
 
+    // loading video
     socket.on('request-video-change', (filename) => {
         if (!currentRoomId || !activeRooms[currentRoomId]) return;
         activeRooms[currentRoomId].video_name = filename;
@@ -101,6 +105,20 @@ io.on('connection', (socket) => {
         }
     });
 
+    socket.on('check-subtitles', (filename, callback) => {
+        const dir = path.dirname(filename); 
+        const subPath = path.join('/videos', dir, 'subtitles.vtt');
+
+        fs.access(subPath, fs.constants.F_OK, (err) => {
+            if (err) {
+                callback(false); 
+            } else {
+                callback(true); 
+            }
+        });
+    });
+
+    // Syncs
     socket.on('request-sync', () => {
         const room = activeRooms[currentRoomId];
         
@@ -144,6 +162,7 @@ io.on('connection', (socket) => {
         socket.to(currentRoomId).emit('apply-sync', data);
     });
 
+    // buffering logic
     socket.on('client-buffering', () => {
         if (currentRoomId && activeRooms[currentRoomId]) {
             activeRooms[currentRoomId].bufferingUsers.add(socket.id);
