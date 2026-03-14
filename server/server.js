@@ -1,4 +1,7 @@
+const { runStartupCleanup } = require('./utils.js');
 const socketHandler = require('./socketHandler');
+
+runStartupCleanup();
 
 const io = require('socket.io')(3000, {
     cors: {

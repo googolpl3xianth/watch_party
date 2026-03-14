@@ -1,10 +1,27 @@
 const { activeRooms, creationSpamFilter, roomSpamTimer } = require('../store');
-const { getVideoList, sanitize, checkFileSubtitles } = require('../utils');
+const { getVideoList, sanitize, checkFileSubtitles, deleteRoomVideo } = require('../utils');
 
 module.exports = function(io, socket) {
 
-    getVideoList().then(list => {
-        socket.emit('video-list', list);
+    socket.on('update-video-list', () =>{
+        if (socket.data.currentRoomId) {
+            const currentRoom = socket.data.currentRoomId;
+        
+            getVideoList('/media/compressed').then(list => {
+                const filteredList = list.filter(item => {
+                    const parts = item.split('/');
+                    const topFolder = parts[0];
+
+                    if (topFolder === currentRoom) return true;
+                    
+                    if (topFolder.length === 6) return false; 
+                    
+                    return true; 
+                });
+
+                socket.emit('video-list', filteredList);
+            });
+        }
     });
 
     // Room creation
@@ -169,6 +186,7 @@ module.exports = function(io, socket) {
                 const currentSize = io.sockets.adapter.rooms.get(roomToCleanup)?.size || 0; 
 
                 if (currentSize === 0) {
+                    deleteRoomVideo(roomToCleanup);
                     delete activeRooms[roomToCleanup]; 
                     //console.log(`Room ${roomToCleanup} deleted because it is empty.`);
                 }

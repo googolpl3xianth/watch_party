@@ -15,6 +15,7 @@ const roleMenu = document.getElementById('role-menu');
 const roomStatus = document.getElementById('room-status');
 const joinGate = document.getElementById('join-gate');
 const joinBtn = document.getElementById('join-btn');
+const uploadArea = document.getElementById('upload-area');
 
 export function setupLobbyUI(){
     document.getElementById('page-loader').style.display = 'none';
@@ -40,8 +41,9 @@ export function setupRoomUI() {
     document.getElementById('edit-name-btn').addEventListener('click', rename);
     document.getElementById('home-btn').addEventListener('click', goHome);
     document.getElementById('load-video-btn').addEventListener('click', () => requestChange());
+    document.getElementById('open-upload-modal-btn').addEventListener('click', openUpload);
 
-    document.getElementById('user-count-btn').addEventListener('click', getUserList);
+    userCountBtn.addEventListener('click', getUserList);
     document.getElementById('change-role-btn').addEventListener('click', (event) => {getRoleList(event)});
     document.getElementById('role-change-host').addEventListener('click', () => {submitRoleChange('host')});
     document.getElementById('role-change-admin').addEventListener('click', () => {submitRoleChange('admin')});
@@ -134,8 +136,16 @@ export function getSelectedVideo(){
 }
 
 export function showRoomStatus(){
+    roomStatus.classList.add('show-guest');
+}
+
+export function hideRoomStatus(){
     roomStatus.classList.remove('show-guest');
-    roomStatus.style.setProperty('display', 'none', 'important');
+}
+
+export function changeRoomStatus(text){
+    showRoomStatus();
+    roomStatus.innerText = text;
 }
 
 export function updateUserCount(){
@@ -208,45 +218,21 @@ export function showPermOnly(){
         State.isHost = (myConfirmedRole === 'host');
         State.sync_perm = (myConfirmedRole === 'host' || myConfirmedRole === 'admin');
     }
-    
-    if(State.isHost){
-        hostElements.forEach(el => {
-            el.classList.add('show-host');
-            el.style.setProperty('display', 'block', 'important');
-        });
-    }
-    else{
-        hostElements.forEach(el => {
-            el.classList.remove('show-host');
-            el.style.setProperty('display', 'none', 'important');
-        });
-    }
 
     if (State.sync_perm) {
         if(State.isHost){
-            hostElements.forEach(el => {
-                el.classList.add('show-host');
-                el.style.setProperty('display', 'block', 'important');
-            });
+            hostElements.forEach(el => el.classList.add('show-host'));
         }
-        guestElements.forEach(el => {
-            el.classList.remove('show-guest');
-            el.style.setProperty('display', 'none', 'important');
-        });
-        permElements.forEach(el => {
-            el.classList.add('show-perms');
-            el.style.setProperty('display', 'block', 'important');
-        });
+        else{
+            hostElements.forEach(el => el.classList.remove('show-host'));
+        }
+        guestElements.forEach(el => el.classList.remove('show-guest'));
+        permElements.forEach(el => el.classList.add('show-perms'));
         allowProgressAccess(true);
     } else {
-        guestElements.forEach(el => {
-            el.classList.add('show-guest');
-            el.style.setProperty('display', 'block', 'important');
-        });
-        permElements.forEach(el => {
-            el.classList.remove('show-perms');
-            el.style.setProperty('display', 'none', 'important');
-        });
+        hostElements.forEach(el => el.classList.remove('show-host'));
+        guestElements.forEach(el => el.classList.add('show-guest'));
+        permElements.forEach(el => el.classList.remove('show-perms'));
         allowProgressAccess(false);
     }
 }
@@ -280,6 +266,10 @@ function getRoomLink(){
     } else {
         console.error('Clipboard API not supported');
     }
+}
+
+function openUpload(){
+    uploadArea.style.display = "default";
 }
 
 function rename(){

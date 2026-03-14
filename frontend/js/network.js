@@ -1,7 +1,7 @@
 // js/network.js
 import { State } from './state.js';
 import { setupVideo, handleApplySync, getVideoData, bufferPause, bufferPlay } from './video.js';
-import { showRoom, showGate, showRoomStatus, showPermOnly, setVideoSelect, updateUserCount, updateUserList, removeUser, getSelectedVideo, setupLobbyUI} from './ui.js';
+import { showRoom, showGate, hideRoomStatus, showPermOnly, setVideoSelect, updateUserCount, updateUserList, removeUser, getSelectedVideo, setupLobbyUI} from './ui.js';
 
 export const socket = io({secure: true, transports: ['websocket'] });
 
@@ -19,6 +19,7 @@ export function initializeNetwork(){
     socket.on('join-success', (permission) => {
         document.documentElement.classList.remove('direct-join');
         showRoom();
+        socket.emit('update-video-list');
 
         State.isHost = (permission === 'host');
         State.sync_perm = (permission === 'host' || permission === 'admin');
@@ -89,7 +90,7 @@ function setupSocketLogic() {
     // --- 2. INBOUND: Everyone ---
     socket.on('load-new-video', (filename) => {
         if (State.currentVideoFilename === filename || !filename) return;
-        showRoomStatus();
+        hideRoomStatus();
         State.currentVideoFilename = filename;
         //console.log("Switching to:", filename);
 
@@ -145,6 +146,9 @@ export function checkSubtitles(filename, callback) {
 
 // UI logic
 export function requestChange(filename) {
+    if(filename){
+        socket.emit('update-video-list');
+    }
     const selectedFile = filename || getSelectedVideo();
     if (selectedFile) {
         socket.emit('request-video-change', selectedFile);

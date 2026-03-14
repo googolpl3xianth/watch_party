@@ -203,16 +203,24 @@ html.direct-join #page-loader {
 
 #media-controls { 
     margin-bottom: 20px; 
-    display: flex;
+    display: none;
     flex-direction: row; /* Puts them side by side */
     align-items: center;
     justify-content: center;
-    gap: 10px;
+    gap: 15px;
     width: 100%;
+    flex-wrap: nowrap !important;
+}
+#media-controls > * {
+    margin: 0 !important; 
+}
+#media-controls.show-perms { 
+    display: flex !important; 
 }
 
 .select-class {
-    width: 100%;
+    flex: 1 1 auto; /* Allows it to grow and shrink nicely */
+    min-width: 100px;
     max-width: 300px;
     padding: 12px;
     border-radius: var(--border-radius);
@@ -366,6 +374,10 @@ html.direct-join #page-loader {
     white-space: nowrap;
 }
 
+.volume-slider{
+    accent-color: #ffffff
+}
+
 /* =========================================
    6. SUBTITLES & CUES
    ========================================= */
@@ -481,14 +493,25 @@ video::-webkit-media-text-track-container {
 .clean-btn {
     background: transparent;
     border: none;
-    padding: 8px;
-    border-radius: 50%;
     margin: 0;
+    padding: 0;
+
+    width: 44px; 
+    height: 44px;
+    border-radius: 50%;
     cursor: pointer;
+
     display: flex;
     align-items: center; 
     justify-content: center;
     transition: background-color 0.2s ease;
+
+    flex-shrink: 0;
+}
+.clean-btn img, .clean-btn svg {
+    display: block;
+    width: 24px;
+    height: 24px;
 }
 
 .clean-btn:hover {

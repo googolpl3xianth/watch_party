@@ -1,16 +1,26 @@
 // js/video.js
+import Hls from 'hls.js';
+window.Hls = Hls;
 import { State } from './state.js';
 import { emitSync, sync, checkSubtitles, clientBuffering, clientRecovered } from './network.js';
 
 const hlsConfig = {
     startLevel: -1,
     capLevelToPlayerSize: true,
-    maxBufferLength: 60, 
-    maxMaxBufferLength: 90,
+    maxBufferLength: 30, 
+    maxMaxBufferLength: 60,
     abrEwmaDefaultEstimate: 500000, 
     abrBandWidthFactor: 0.6, 
     maxStarvationDelay: 2,
-    enableWorker: true
+    enableWorker: true,
+    lowLatencyMode: false,
+    loader: null,
+}
+const p2pmlConfig = {
+    forwardSegmentCount: 4,
+    maxHistoryChunks: 15,
+    p2pDownloadMaxRetries: 3
+
 }
 const CONFIG = {
     SYNC_THRESHOLD_SECONDS: 1.5,
@@ -77,7 +87,7 @@ export function setupVideoPlayer() {
         if (!State.sync_perm) { sync(); }
         else{ emitSync('play', video.currentTime); }
         
-        playPauseIcon.src = "./img/pause.svg";
+        playPauseIcon.src = "/img/pause.svg";
         playPauseIcon.alt = "pause";
     });
 
@@ -86,7 +96,7 @@ export function setupVideoPlayer() {
         if (!State.sync_perm) { sync(); }
         else{ emitSync('pause', video.currentTime);}
 
-        playPauseIcon.src = "./img/play.svg";
+        playPauseIcon.src = "/img/play.svg";
         playPauseIcon.alt = "play";
     });
 
@@ -234,21 +244,37 @@ export function joinVideo(){
 }
 
 export async function setupVideo(filename) {
-    const title = document.getElementById('video-title');
+    if (!filename) return;
 
-    if (hls) {
-        hls.destroy();
-        hls = null;
-    }
+    const title = document.getElementById('video-title');
+    if (hls) { hls.destroy(); hls = null; }
 
     video.innerHTML = '';
     ccBtn.style.display = 'none'; 
 
-    let webSafePath = filename.split('\\').join('/');
-    webSafePath = webSafePath.split('/').map(encodeURIComponent).join('/');
-    const videoUrl = `/media/${webSafePath}`;
+    // 1. Clean slashes and force strict URI encoding for EVERY folder level
+    const cleanName = filename.replace(/\\/g, '/');
+    const encodedPath = cleanName.split('/').map(encodeURIComponent).join('/');
+    
+    // 2. Build the absolute URLs
+    const videoUrl = `${window.location.origin}/media/compressed/${encodedPath}`;
     const basePath = videoUrl.substring(0, videoUrl.lastIndexOf('/'));
 
+    // 3. Fetch Metadata (with Cache Buster)
+    try {
+        const metaRes = await fetch(`${basePath}/meta.json?t=${Date.now()}`);
+        if (metaRes.ok) {
+            const metaInfo = await metaRes.json();
+            title.innerText = metaInfo.title;
+        } else {
+            // Fallback: Grab the folder name and strip "_HLS"
+            title.innerText = cleanName.split('/').slice(-2, -1)[0].replace('_HLS', '');
+        }
+    } catch (e) {
+        title.innerText = cleanName.split('/').slice(-2, -1)[0].replace('_HLS', '');
+    }
+
+    // --- SUBTITLE CHECK ---
     checkSubtitles(filename, (hasSubtitles) => {
         if (hasSubtitles) {
             const track = document.createElement('track');
@@ -260,39 +286,48 @@ export async function setupVideo(filename) {
             video.appendChild(track);
 
             track.addEventListener('load', () => {
-                const textTracks = video.textTracks;
-                if (textTracks.length > 0) {
-                    textTracks[0].mode = 'showing';
+                if (video.textTracks.length > 0) {
+                    video.textTracks[0].mode = 'showing';
                     ccBtn.style.display = 'block';
                     ccBtn.style.color = "#ff0000"; 
                     ccBtn.style.opacity = "1";
                 }
             });
         } else {
-            //console.log("No subtitles found for this video.");
+            ccBtn.style.display = 'none';
         }
     });
 
+    // --- HLS INITIALIZATION ---
     if (filename.endsWith('.m3u8')) {
         video.removeAttribute('src'); 
 
         if (typeof Hls !== 'undefined' && Hls.isSupported()) {
             const savedQuality = localStorage.getItem('hlsQuality');
+            if (savedQuality !== null) hlsConfig.startLevel = parseInt(savedQuality);
 
-            if (savedQuality !== null) {
-                hlsConfig.startLevel = parseInt(savedQuality);
+            let p2pEngine = null;
+            const p2pmlGlobal = window.p2pml;
+
+            if (p2pmlGlobal && p2pmlGlobal.hlsjs && p2pmlGlobal.hlsjs.Engine.isSupported()) {
+                p2pEngine = new p2pml.hlsjs.Engine({
+                    segments: {
+                        forwardSegmentCount: p2pmlConfig.forwardSegmentCount,
+                        maxHistoryChunks: p2pmlConfig.maxHistoryChunks
+                    },
+                    loader: {
+                        trackerAnnounce: [import.meta.env.VITE_TRACKER_URL],
+                        p2pDownloadMaxRetries: p2pmlConfig.p2pDownloadMaxRetries,
+                        httpUseRanges: true
+                    }
+                });
+                hlsConfig.loader = p2pEngine.createLoaderClass();
+            } else {
+                console.warn("P2P Engine not found or not supported. Falling back to standard HLS.");
             }
 
-            hls = new Hls({
-                startLevel: hlsConfig.startLevel, 
-                capLevelToPlayerSize: hlsConfig.capLevelToPlayerSize,
-                maxBufferLength: hlsConfig.maxBufferLength, 
-                maxMaxBufferLength: hlsConfig.maxMaxBufferLength,
-                abrEwmaDefaultEstimate: hlsConfig.abrEwmaDefaultEstimate, 
-                abrBandWidthFactor: hlsConfig.abrBandWidthFactor, 
-                maxStarvationDelay: hlsConfig.maxStarvationDelay,
-                enableWorker: hlsConfig.enableWorker
-            });
+            hls = new Hls(hlsConfig);
+            if (p2pEngine) p2pml.hlsjs.initHlsJsPlayer(hls);
             
             hls.loadSource(videoUrl);
             hls.attachMedia(video);
@@ -358,16 +393,23 @@ export async function setupVideo(filename) {
             hls.on(Hls.Events.ERROR, function (event, data) {
                 if (data.fatal) {
                     switch (data.type) {
-                        case Hls.ErrorTypes.MEDIA_ERROR:
-                            console.warn("Fatal media error encountered, trying to recover...", data);
-                            hls.recoverMediaError(); // Tell HLS.js to flush the buffer and try again
-                            break;
                         case Hls.ErrorTypes.NETWORK_ERROR:
-                            console.error("Fatal network error encountered", data);
-                            hls.startLoad(); // Try to fetch the chunk again
+                            console.warn("Network error. Retrying...", data);
+                            setTimeout(() => hls.startLoad(), 2000);
+                            break;
+                        case Hls.ErrorTypes.MEDIA_ERROR:
+                            console.warn("Fatal media error, recovering...", data);
+                            hls.recoverMediaError();
+                            break;
+                        case Hls.ErrorTypes.OTHER_ERROR:
+                            if (data.details === 'internalException') {
+                                // Exposing the actual error object so we aren't blind!
+                                console.error("[DEMUXER CRASH] FMP4 parsing failed! The internal error is:", data.err);
+                            }
+                            hls.destroy();
                             break;
                         default:
-                            console.error("Unrecoverable fatal error. Destroying player.", data);
+                            console.error("Unrecoverable fatal error.", data);
                             hls.destroy();
                             break;
                     }
@@ -390,12 +432,6 @@ export async function setupVideo(filename) {
                 }
             });
         }
-    }
-    if(State.currentVideoFilename.endsWith(".m3u8")){
-        title.innerText  = State.currentVideoFilename.split('/')[0];
-    }
-    else{
-        title.innerText = State.currentVideoFilename.split('.')[0];
     }
 }
 
@@ -427,12 +463,12 @@ function executeSync(data) {
     
     if (data.type === 'play') {
         if (video.readyState >= 3) {
-            video.play().catch(e => console.log("Playback failed:", e));
+            video.play().catch(e => console.error("Playback failed:", e));
         } else {
             pendingPlayListener = () => {
                 internalChange = true; 
                 if (syncLockTimer) clearTimeout(syncLockTimer);
-                video.play().catch(e => console.log("Delayed play failed:", e));
+                video.play().catch(e => console.error("Delayed play failed:", e));
                 
                 syncLockTimer = setTimeout(() => { internalChange = false; }, CONFIG.LOCK_TIMEOUT_MS);
                 pendingPlayListener = null;
@@ -468,7 +504,7 @@ export function bufferPause(){
 
 export function bufferPlay() {
     internalChange = true;
-    video.play().catch(e => console.log("Auto-resume blocked:", e));
+    video.play().catch(e => console.error("Auto-resume blocked:", e));
     setTimeout(() => { internalChange = false; }, 300);
     videoLoader.classList.remove('visible');
 }
@@ -520,9 +556,9 @@ function toggleFullscreen() {
 function toggleMute(){
     video.muted = !video.muted;
     if(video.muted){
-        muteBtn.src = './img/volume-silence.svg';
+        muteBtn.src = '/img/volume-silence.svg';
     } else{
-        muteBtn.src = './img/volume.svg';
+        muteBtn.src = '/img/volume.svg';
     }
 }
 
@@ -534,12 +570,12 @@ function toggleSubtitles() {
         
         if (track.mode === 'showing') {
             track.mode = 'hidden';
-            ccIcon.src = "./img/closed-caption.svg"
+            ccIcon.src = "/img/closed-caption.svg"
             ccBtn.style.opacity = "0.5";     
         } 
         else {
             track.mode = 'showing';
-            ccIcon.src = "./img/closed-caption-filled.svg"
+            ccIcon.src = "/img/closed-caption-filled.svg"
             ccBtn.style.opacity = "1"; 
         }
     }
