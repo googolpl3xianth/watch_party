@@ -302,6 +302,10 @@ html.direct-join #page-loader {
     z-index: var(--z-header);
 }
 
+#screen-play-btn.is-idle{
+    cursor: none;
+}
+
 /* =========================================
    5. VIDEO CONTROLS OVERLAY
    ========================================= */

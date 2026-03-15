@@ -46,6 +46,7 @@ const playPauseIcon = document.getElementById('play-pause-icon');
 const ccBtn = document.getElementById('subtitle-btn');
 const ccIcon = document.getElementById('cc-icon');
 const muteBtn = document.getElementById('mute-icon');
+const screenBtn = document.getElementById('screen-play-btn')
 
 export function setupVideoPlayer() {
     setUpVideoUI();
@@ -485,14 +486,14 @@ function executeSync(data) {
 }
 
 export function allowProgressAccess(show){
-    if(show){
+    /*if(show){
         progressContainer.classList.add('mouse-interact');
         //console.log("I am now a host/admin. Controls unlocked.");
     }
     else{
         progressContainer.classList.remove('mouse-interact');
         //console.log("I am now a guest. Controls locked.");
-    }
+    }*/
 }
 
 export function bufferPause(){
@@ -515,9 +516,11 @@ export function getVideoData(){
 
 function resetIdleTimer() {
     wrapper.classList.remove('is-idle');
+    screenBtn.classList.remove('is-idle');
     clearTimeout(idleTimer);
     idleTimer = setTimeout(() => {
-        if (!video.paused) wrapper.classList.add('is-idle');
+        if (!video.paused) wrapper.classList.add('is-idle'); screenBtn.classList.add('is-idle');
+        
     }, 2000);
 }
 
