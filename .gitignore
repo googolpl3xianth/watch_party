@@ -2,8 +2,7 @@
 .env
 
 # Dependencies
-./watch-party-worker/node_modules/
-node_modules
+node_modules/
 libs
 
 # NGINX / Certs

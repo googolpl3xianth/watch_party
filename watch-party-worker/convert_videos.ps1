@@ -1,5 +1,9 @@
 # Convert-Videos.ps1
 
+param (
+    [string]$SingleFile = ""
+)
+
 $activeScheme = powercfg -getactivescheme
 $originalGuid = ([regex]::Match($activeScheme, '(?<=GUID: ).*?(?=\s*\()')).Value
 
@@ -15,10 +19,6 @@ $chunkSize = 2 # in secs
 if (-not (Test-Path -Path $destDir)) {
     New-Item -ItemType Directory -Path $destDir | Out-Null
 }
-
-param (
-    [string]$SingleFile = ""
-)
 
 if ($SingleFile -ne "") {
     $videoFiles = Get-Item -LiteralPath $SingleFile

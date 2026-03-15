@@ -201,6 +201,10 @@ html.direct-join #page-loader {
     margin: 40px 0 15px 0;      
 }
 
+#video-title{
+    margin: 20px;
+}
+
 #media-controls { 
     margin-bottom: 20px; 
     display: none;

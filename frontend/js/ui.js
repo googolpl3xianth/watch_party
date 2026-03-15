@@ -136,11 +136,11 @@ export function getSelectedVideo(){
 }
 
 export function showRoomStatus(){
-    roomStatus.classList.add('show-guest');
+    roomStatus.style.display = 'block';
 }
 
 export function hideRoomStatus(){
-    roomStatus.classList.remove('show-guest');
+    roomStatus.style.display = 'none';
 }
 
 export function changeRoomStatus(text){
