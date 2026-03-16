@@ -17,9 +17,10 @@ const hlsConfig = {
     loader: null,
 }
 const p2pmlConfig = {
-    forwardSegmentCount: 4,
+    forwardSegmentCount: 15,
     maxHistoryChunks: 15,
-    p2pDownloadMaxRetries: 3
+    p2pDownloadMaxRetries: 1,
+    p2pSegmentDownloadTimeout: 1000,
 
 }
 const CONFIG = {
@@ -228,19 +229,6 @@ export function joinVideo(){
     controls.style.display = 'flex';
 
     video.muted = false;
-    //console.log("Audio context unlocked safely.");
-    
-    if (video.currentSrc || video.src) {
-        video.play().catch(e => {
-            if (e.name !== 'AbortError') {
-                //console.log("Unmuted playback blocked. Falling back to muted...");
-                video.muted = true;
-                video.play().catch(err => console.error("Fallback play failed", err));
-            }
-        });
-    } else {
-        //console.log("Waiting for HLS to inject the blob URL...");
-    }
     sync();
 }
 
@@ -319,6 +307,7 @@ export async function setupVideo(filename) {
                     loader: {
                         trackerAnnounce: [import.meta.env.VITE_TRACKER_URL],
                         p2pDownloadMaxRetries: p2pmlConfig.p2pDownloadMaxRetries,
+                        p2pSegmentDownloadTimeout: p2pmlConfig.p2pSegmentDownloadTimeout,
                         httpUseRanges: true
                     }
                 });
@@ -483,17 +472,6 @@ function executeSync(data) {
     if (!needsSeek) {
         syncLockTimer = setTimeout(() => { internalChange = false; }, CONFIG.LOCK_TIMEOUT_MS);
     }
-}
-
-export function allowProgressAccess(show){
-    /*if(show){
-        progressContainer.classList.add('mouse-interact');
-        //console.log("I am now a host/admin. Controls unlocked.");
-    }
-    else{
-        progressContainer.classList.remove('mouse-interact');
-        //console.log("I am now a guest. Controls locked.");
-    }*/
 }
 
 export function bufferPause(){

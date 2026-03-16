@@ -1,7 +1,7 @@
 // js/ui.js
 import { State } from './state.js';
 import { socket, createRoom, requestChange, updateUser} from './network.js'
-import { joinVideo, allowProgressAccess } from './video.js'
+import { joinVideo } from './video.js'
 
 const roomCodeInput = document.getElementById('room-code-input');
 const lobbyDiv = document.getElementById('lobby');
@@ -228,12 +228,10 @@ export function showPermOnly(){
         }
         guestElements.forEach(el => el.classList.remove('show-guest'));
         permElements.forEach(el => el.classList.add('show-perms'));
-        allowProgressAccess(true);
     } else {
         hostElements.forEach(el => el.classList.remove('show-host'));
         guestElements.forEach(el => el.classList.add('show-guest'));
         permElements.forEach(el => el.classList.remove('show-perms'));
-        allowProgressAccess(false);
     }
 }
 
