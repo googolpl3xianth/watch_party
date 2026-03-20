@@ -97,13 +97,14 @@
         </section>
         <div id="upload-area" style="display: none;"></div>
 
-        <h3 id="video-title"></h3>
         <p id="room-status">Waiting on Host to load video</p>
 
+        <div id="title-container">
+            <p id="video-title"></p>
+        </div>
         <section id="join-gate">
             <button id="join-btn" class="primary-btn" aria-label="join">Join & Sync</button>
         </section>
-
         <figure id="video-wrapper">
             <span id="video-loader" class="loader" role="progressbar" aria-label="Buffering video"></span>
 
@@ -113,22 +114,24 @@
 
             <figcaption id="custom-controls" class="video-overlay">
                 <button id="play-pause-btn" class="control-btn perms-only" aria-label="Play or Pause">
-                    <img id="play-pause-icon" src="/img/pause.svg" alt="" width="24" height="24">
+                    <img id="play-pause-icon" src="/img/play.svg" alt="" width="24" height="24">
                 </button>
 
                 <button id="sync-btn" class="control-btn" aria-label="Force Sync">
                     <img id="sync-icon" src="/img/refresh.svg" alt="" width="24" height="24">
                 </button>
 
-                <button id="mute-btn" class="control-btn" aria-label="Mute or Unmute">
-                    <img id="mute-icon" src="/img/volume.svg" alt="" width="24" height="24">
-                </button>
-                
-                <input id="volume-slider" type="range" min="0" max="1" step="0.1" value="1" aria-label="Volume">
+                <div id="volume-control">
+                    <button id="mute-btn" class="control-btn" aria-label="Mute or Unmute">
+                        <img id="mute-icon" src="/img/volume.svg" alt="" width="24" height="24">
+                    </button>
+                    <input id="volume-slider" type="range" min="0" max="1" step="0.1" value="1" aria-label="Volume">
+                </div>
 
                 <span id="time-display" class="time-text">00:00 / 00:00</span>
 
                 <div class="progress-container" aria-label="Video Timeline">
+                    <div id="thumbnail-preview" class="thumbnail-preview"></div>
                     <div id="progress-bar" class="progress-filled"></div>
                 </div>
 

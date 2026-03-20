@@ -15,10 +15,10 @@ module.exports = function(io, socket) {
 
     socket.on('host-video-status', (data) => {
         if (activeRooms[socket.data.currentRoomId]) {
-            activeRooms[socket.data.currentRoomId].isPaused = data.paused;
+            activeRooms[socket.data.currentRoomId].status = data.paused ? 'pause' : 'play';
             activeRooms[socket.data.currentRoomId].currentTime = data.time;
-            socket.to(data.requesterId).emit('apply-sync', {
-                type: activeRooms[socket.data.currentRoomId].isPaused ? 'pause' : 'play',
+            io.to(data.requesterId).emit('apply-sync', {
+                type: activeRooms[socket.data.currentRoomId].status,
                 time: activeRooms[socket.data.currentRoomId].currentTime
             });
         }
@@ -33,17 +33,21 @@ module.exports = function(io, socket) {
             return;
         }
 
-        //console.log(`Sync-event triggered by ${socket.id}, time : ${activeRooms[socket.data.currentRoomId].currentTime} -> ${data.time}, isPaused: ${activeRooms[socket.data.currentRoomId].isPaused} -> ${(data.type !== 'play')} type: ${data.type}`);
+        //console.log(`Sync-event triggered by ${socket.id}, time : ${activeRooms[socket.data.currentRoomId].currentTime} -> ${data.time}, status: ${activeRooms[socket.data.currentRoomId].status} -> ${(data.type !== 'play')} type: ${data.type}`);
 
         activeRooms[socket.data.currentRoomId].currentTime = data.time;
         if(data.type === 'play'){
-            activeRooms[socket.data.currentRoomId].isPaused = false;
+            if(activeRooms[socket.data.currentRoomId].bufferingUsers.size !== 0){
+                //console.log("Play denied: Users are still buffering");
+                return;
+            }
+            activeRooms[socket.data.currentRoomId].status = 'play';
         }
         else if(data.type === 'pause'){
-            activeRooms[socket.data.currentRoomId].isPaused = true;
+            activeRooms[socket.data.currentRoomId].status = 'pause';
         }
 
-        socket.to(socket.data.currentRoomId).emit('apply-sync', data);
+        io.to(socket.data.currentRoomId).emit('apply-sync', data);
     });
 
     // buffering logic
@@ -51,8 +55,12 @@ module.exports = function(io, socket) {
         if (socket.data.currentRoomId && activeRooms[socket.data.currentRoomId]) {
             activeRooms[socket.data.currentRoomId].bufferingUsers.add(socket.id);
             //console.log(`Room ${socket.data.currentRoomId}: User ${socket.id} is buffering. Pausing room.`);
-            if (!activeRooms[socket.data.currentRoomId].isPaused) {
-                socket.to(socket.data.currentRoomId).emit('force-pause-room', socket.id);
+            if (activeRooms[socket.data.currentRoomId].status !== 'pause') {
+                activeRooms[socket.data.currentRoomId].status = 'buffer';
+                io.to(socket.data.currentRoomId).emit('apply-sync', {
+                    type: activeRooms[socket.data.currentRoomId].status,
+                    time: activeRooms[socket.data.currentRoomId].currentTime
+                });
             }
         }
     });
@@ -61,8 +69,12 @@ module.exports = function(io, socket) {
         if (socket.data.currentRoomId && activeRooms[socket.data.currentRoomId]) {
             activeRooms[socket.data.currentRoomId].bufferingUsers.delete(socket.id);
             //console.log(`Room ${socket.data.currentRoomId}: User ${socket.id} recovered. Resuming room.`);
-            if (activeRooms[socket.data.currentRoomId].bufferingUsers.size === 0 && !activeRooms[socket.data.currentRoomId].isPaused) {
-                socket.to(socket.data.currentRoomId).emit('resume-room');
+            if (activeRooms[socket.data.currentRoomId].bufferingUsers.size === 0 && activeRooms[socket.data.currentRoomId].status !== 'pause') {
+                activeRooms[socket.data.currentRoomId].status = 'play';
+                io.to(socket.data.currentRoomId).emit('apply-sync', {
+                    type: activeRooms[socket.data.currentRoomId].status,
+                    time: activeRooms[socket.data.currentRoomId].currentTime
+                });
             }
         }
     });

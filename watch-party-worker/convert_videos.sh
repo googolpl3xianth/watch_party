@@ -66,6 +66,49 @@ else
     "master.m3u8"
 fi
 
+echo "  -> Generating Thumbnail Sprite Sheets..."
+
+# Extract a frame every 10 seconds, scale to 160x90, tile into a 10x10 grid
+ffmpeg -loglevel warning -i "$INPUT_PATH" -vf "fps=1/10,scale=160:90,tile=10x10" "$OUT_DIR/sprite_%03d.jpg" -y
+
+echo "  -> Generating thumbnails.vtt coordinate file..."
+
+# Get video duration in seconds (strip decimals)
+DURATION=$(ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "$INPUT_PATH")
+DURATION=${DURATION%.*}
+
+VTT_FILE="$OUT_DIR/thumbnails.vtt"
+echo "WEBVTT" > "$VTT_FILE"
+echo "" >> "$VTT_FILE"
+
+THUMB_COUNT=$(( DURATION / 10 ))
+
+for (( i=0; i<=THUMB_COUNT; i++ )); do
+    START_TIME=$(( i * 10 ))
+    END_TIME=$(( (i + 1) * 10 ))
+
+    # Format time as HH:MM:SS.000
+    START_STR=$(printf "%02d:%02d:%02d.000" $((START_TIME/3600)) $((START_TIME%3600/60)) $((START_TIME%60)))
+    END_STR=$(printf "%02d:%02d:%02d.000" $((END_TIME/3600)) $((END_TIME%3600/60)) $((END_TIME%60)))
+
+    # Calculate which sprite image this belongs to (sprite_001.jpg, sprite_002.jpg)
+    IMG_INDEX=$(( i / 100 + 1 ))
+    IMG_NAME=$(printf "sprite_%03d.jpg" $IMG_INDEX)
+
+    # Calculate X, Y coordinates on the 10x10 grid
+    SUB_INDEX=$(( i % 100 ))
+    COL=$(( SUB_INDEX % 10 ))
+    ROW=$(( SUB_INDEX / 10 ))
+
+    X=$(( COL * 160 ))
+    Y=$(( ROW * 90 ))
+
+    # Write to VTT
+    echo "$START_STR --> $END_STR" >> "$VTT_FILE"
+    echo "$IMG_NAME#xywh=$X,$Y,160,90" >> "$VTT_FILE"
+    echo "" >> "$VTT_FILE"
+done
+
 ROOM_DIR=$(dirname "$OUT_DIR")
 chmod -R 777 "$ROOM_DIR"
 

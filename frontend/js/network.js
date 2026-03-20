@@ -1,13 +1,13 @@
 // js/network.js
 import { State } from './state.js';
-import { setupVideo, handleApplySync, getVideoData, bufferPause, bufferPlay } from './video.js';
-import { showRoom, showGate, hideRoomStatus, showPermOnly, setVideoSelect, updateUserCount, updateUserList, removeUser, getSelectedVideo, setupLobbyUI} from './ui.js';
+import { setupVideo, executeSync, getVideoData, reloadVideo } from './video.js';
+import { showRoom, showGate, hideRoomStatus, showPermOnly, setVideoSelect, updateUserCount, updateUserList, removeUser, getSelectedVideo, setupLobbyUI, changeRoomStatus} from './ui.js';
 
 export const socket = io({secure: true, transports: ['websocket'] });
 
 const roomId = State.roomId;
 let logicInitialized = false;
-let lastOutboundTime = 0;
+let fakeProgressBar = null;
 
 export function initializeNetwork(){
     setupSocketUI();
@@ -87,7 +87,10 @@ function setupSocketLogic() {
     }
     logicInitialized = true;
 
-    // --- 2. INBOUND: Everyone ---
+    socket.on('upgrade-to-swarm', () => {
+        reloadVideo();
+    });
+
     socket.on('load-new-video', (filename) => {
         if (State.currentVideoFilename === filename || !filename) return;
         hideRoomStatus();
@@ -99,6 +102,43 @@ function setupSocketLogic() {
         }
 
         setupVideo(filename);
+    });
+
+    socket.on('transcode-start', (fileSizeBytes) => {
+        const fileSizeMB = fileSizeBytes / (1024 * 1024);
+        const estimatedSeconds = Math.max(15, Math.floor(fileSizeMB / 15)); 
+        let progress = 0;
+        let estimatedSecondsProgress = estimatedSeconds;
+
+        changeRoomStatus(`Transcoding... 0% (Est. time: ${estimatedSeconds}s)`);
+
+        if (fakeProgressBar) clearInterval(fakeProgressBar);
+        
+        fakeProgressBar = setInterval(() => {
+            progress += (100 / estimatedSeconds);
+            estimatedSecondsProgress -= 1;
+            
+            if (progress > 99) {
+                progress = 99;
+                changeRoomStatus(`Finalizing video formats... 99%`);
+            } else {
+                changeRoomStatus(`Transcoding... ${Math.floor(progress)}% (Est. time: ${estimatedSecondsProgress}s)`);
+            }
+        }, 1000);
+    });
+
+    socket.on('transcode-ready', (finalPath) => {
+        if (fakeProgressBar) {
+            clearInterval(fakeProgressBar);
+            fakeProgressBar = null;
+        }
+        
+        changeRoomStatus(`Transcoding Complete! Loading...`);
+        
+        setTimeout(() => {
+            hideRoomStatus();
+            requestChange(finalPath);
+        }, 1000); 
     });
 
     socket.on('switch-permission', (targetSocketID, newUsername, newRole) => {
@@ -113,21 +153,7 @@ function setupSocketLogic() {
     });
 
     socket.on('apply-sync', (data) => {
-        const now = Date.now();
-        if (now - lastOutboundTime < 500 && data.type === 'heartbeat') return;
-        if (now - lastOutboundTime < 200) return; // Minimum "cool down" to prevent loops
-
-        handleApplySync(data);
-    });
-
-    socket.on('force-pause-room', (bufferingUserId) => {
-        //console.log(`User ${bufferingUserId} is buffering. Auto-pausing...`);
-        bufferPause();
-    });
-
-    socket.on('resume-room', () => {
-        //console.log("Everyone caught up. Auto-resuming...");
-        bufferPlay();
+        executeSync(data);
     });
 }
 
@@ -146,6 +172,7 @@ export function checkSubtitles(filename, callback) {
 
 // UI logic
 export function requestChange(filename) {
+    //console.log(`requested change to ${filename}`);
     if(filename){
         socket.emit('update-video-list');
     }
@@ -166,7 +193,6 @@ export function sync(){
 
 export function emitSync(type, time){
     if (!State.sync_perm) return;
-    lastOutboundTime = Date.now();
     socket.emit('sync-event', { type, time });
 }
 

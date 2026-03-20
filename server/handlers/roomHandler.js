@@ -1,5 +1,6 @@
 const { activeRooms, creationSpamFilter, roomSpamTimer } = require('../store');
 const { getVideoList, sanitize, checkFileSubtitles, deleteRoomVideo } = require('../utils');
+require('dotenv').config(); 
 
 module.exports = function(io, socket) {
 
@@ -65,6 +66,12 @@ module.exports = function(io, socket) {
             //console.log(`Roomid: ${socket.data.currentRoomId} User Joined: ${socket.id}`);
             socket.emit('join-success', users[socket.id].role);
             io.to(roomId).emit('update-user-list', activeRooms[socket.data.currentRoomId].users);
+
+            const currentRoomUsers = Object.keys(activeRooms[roomId].users).length;
+                
+            if (currentRoomUsers === 4) {
+                io.to(roomId).emit('upgrade-to-swarm');
+            }
         } else {
             socket.emit('join-error', 'This room does not exist or has expired.');
         }
@@ -87,6 +94,20 @@ module.exports = function(io, socket) {
 
     socket.on('check-subtitles', (filename, callback) => {
         checkFileSubtitles(filename, callback);
+    });
+
+    socket.on('worker-transcode-start', (data) => {
+        if (data.secret !== `${process.env.UPLOAD_KEY}`) return;
+        if (data.roomId) {
+            io.to(data.roomId).emit('transcode-start', data.fileSize);
+        }
+    });
+
+    socket.on('worker-transcode-ready', (data) => {
+        if (data.secret !== `${process.env.UPLOAD_KEY}`) return;
+        if (data.roomId && data.finalPath) {
+            io.to(data.roomId).emit('transcode-ready', data.finalPath);
+        }
     });
 
     socket.on('request-user-change', (targetID, targetUsername, targetRole) => {

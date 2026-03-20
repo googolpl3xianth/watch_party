@@ -110,6 +110,45 @@ foreach ($vid in $videoFiles) {
     
     Start-Process -FilePath "cmd.exe" -ArgumentList $cmdArgs -Wait -NoNewWindow
     
+    Write-Host "  -> Generating Thumbnail Sprite Sheets..." -ForegroundColor Yellow
+    
+    $spriteCmd = "ffmpeg -loglevel warning -i `"$inputPath`" -vf `"fps=1/10,scale=160:90,tile=10x10`" `"$outDir\sprite_%03d.jpg`" -y"
+    Start-Process -FilePath "cmd.exe" -ArgumentList "/c cd /d `"$outDir`" && $spriteCmd" -Wait -NoNewWindow
+
+    Write-Host "  -> Generating thumbnails.vtt coordinate file..." -ForegroundColor Yellow
+    
+    $durationStr = (Invoke-Expression "ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 `"$inputPath`"")
+    $duration = [math]::Floor([double]$durationStr)
+    $vttPath = Join-Path -Path $outDir -ChildPath "thumbnails.vtt"
+
+    "WEBVTT`n" | Out-File -FilePath $vttPath -Encoding utf8
+
+    $thumbCount = [math]::Floor($duration / 10)
+    for ($i = 0; $i -le $thumbCount; $i++) {
+        $startTime = $i * 10
+        $endTime = ($i + 1) * 10
+
+        # Format time as HH:MM:SS.000
+        $startStr = '{0:hh\:mm\:ss\.fff}' -f [timespan]::FromSeconds($startTime)
+        $endStr   = '{0:hh\:mm\:ss\.fff}' -f [timespan]::FromSeconds($endTime)
+
+        # Calculate which sprite image this belongs to
+        $imgIndex = [math]::Floor($i / 100) + 1
+        $imgName = "sprite_{0:D3}.jpg" -f $imgIndex
+
+        # Calculate X, Y coordinates on the 10x10 grid
+        $subIndex = $i % 100
+        $col = $subIndex % 10
+        $row = [math]::Floor($subIndex / 10)
+
+        $x = $col * 160
+        $y = $row * 90
+
+        # Write to VTT
+        "$startStr --> $endStr" | Out-File -FilePath $vttPath -Append -Encoding utf8
+        "$imgName#xywh=$x,$y,160,90`n" | Out-File -FilePath $vttPath -Append -Encoding utf8
+    }
+
     Write-Host "[SUCCESS] Finished $baseName`n" -ForegroundColor Green
 }
 

@@ -201,8 +201,18 @@ html.direct-join #page-loader {
     margin: 40px 0 15px 0;      
 }
 
+#title-container{
+    display: flex;
+    justify-content: center;
+}
+
 #video-title{
-    margin: 20px;
+    white-space: nowrap; 
+    overflow: hidden;  
+    text-overflow: ellipsis;
+    margin: 10px;
+    width: 800px;
+    text-align: left !important;
 }
 
 #media-controls { 
@@ -334,10 +344,12 @@ html.direct-join #page-loader {
 .control-btn {
     background: transparent;
     border: none;
+    margin: 0 5px;
+    padding: 0;
     color: var(--text-primary);
     cursor: pointer;
     transition: transform 0.1s ease;
-    padding: 5px;
+    flex-shrink: 0;
 }
 
 .control-btn:active { transform: scale(0.9); }
@@ -360,7 +372,7 @@ html.direct-join #page-loader {
     height: 8px;
     background: rgba(255, 255, 255, 0.3);
     border-radius: 4px;
-    margin: 0 15px;
+    margin: 10px 15px;
     cursor: default;
     position: relative;
 }
@@ -375,15 +387,52 @@ html.direct-join #page-loader {
 
 .mouse-interact { cursor: pointer !important; }
 
+.thumbnail-preview {
+    position: absolute;
+    bottom: 20px;
+    width: 160px;
+    height: 90px;
+    background-repeat: no-repeat;
+    background-color: #000;
+    border: 2px solid #fff;
+    border-radius: 4px;
+    pointer-events: none; 
+    display: none; 
+    transform: translateX(-50%);
+    z-index: 100;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.5);
+}
+
 .time-text {
     color: var(--text-primary);
     font-size: 14px;
-    margin: 0 10px;
+    margin: 0 5px;
     white-space: nowrap;
 }
 
-.volume-slider{
-    accent-color: #ffffff
+#volume-control{
+    display: flex;
+    align-items: center;
+    margin: 0;
+    padding: 0;
+}
+#volume-control:hover #volume-slider {
+    width: 80px;
+    opacity: 1;
+    margin-left: 8px;
+}
+
+#mute-btn{
+    display: inline-flex;
+}
+
+#volume-slider {
+    accent-color: #ffffff;
+    width: 0;
+    opacity: 0;
+    margin-left: 0;
+    overflow: hidden; 
+    transition: width 0.3s ease, opacity 0.3s ease, margin-left 0.3s ease;
 }
 
 /* =========================================

@@ -4,6 +4,8 @@ const { FileStore } = require('@tus/file-store');
 const { exec } = require('child_process');
 const path = require('path');
 const fs = require('fs');
+const { io } = require('socket.io-client');
+require('dotenv').config(); 
 
 const app = express();
 
@@ -51,15 +53,74 @@ tusServer.on(EVENTS.POST_FINISH, (req, res, upload) => {
 
     const bashCommand = `bash /app/convert_videos.sh "${uploadedFilePath}" "${outputFolder}"`;
 
-    exec(bashCommand, (error, stdout, stderr) => {
-        if (error) {
-            console.error(`[ERROR] Bash Script Failed: ${error.message}`);
-            return;
-        }
-        if (stderr) console.error(`[BASH-STDERR]: ${stderr}`);
-        //console.log(`[BASH-OUTPUT]: ${stdout}`);
-        //console.log(`[FINISHED] File is ready!`);
+    const localSocket = io('ws://sync-server:3000', {
+        transports: ['websocket'],
+        reconnection: false
     });
+
+    localSocket.on('connect', () => {
+        localSocket.emit('worker-transcode-start', { 
+            roomId: roomId, 
+            secret: `${process.env.UPLOAD_KEY}`,
+            fileSize: upload.size // Pass the size so the frontend can calculate the estimate!
+        });
+
+        exec(bashCommand, async (error, stdout, stderr) => {
+            if (error) {
+                console.error(`[ERROR] Bash Script Failed: ${error.message}`);
+                return;
+            }
+            if (stderr) console.error(`[BASH-STDERR]: ${stderr}`);
+
+            const relativePath = `${roomId}/${videoFolderName}/master.m3u8`;
+
+            localSocket.emit('worker-transcode-ready', { 
+                roomId: roomId, 
+                secret: `${process.env.UPLOAD_KEY}` ,
+                finalPath: relativePath
+            });
+            
+            // Disconnect half a second later to keep memory clean
+            setTimeout(() => localSocket.disconnect(), 500);
+        });
+    });
+    localSocket.on('connect_error', (err) => {
+        console.error("[ERROR] Worker could not reach main Socket server:", err.message);
+    });
+});
+
+app.post(/^\/upload($|\/.*)/, (req, res, next) => {
+    const uploadMetadata = req.headers['upload-metadata'];
+
+    if (!uploadMetadata) {
+        return res.status(400).send('Missing Upload-Metadata header.');
+    }
+
+    let isAllowed = false;
+    let decodedFilename = 'Unknown';
+
+    try {
+        uploadMetadata.split(',').forEach(pair => {
+            const [key, encodedValue] = pair.trim().split(' ');
+            if ((key === 'name' || key === 'filename') && encodedValue) {
+                decodedFilename = Buffer.from(encodedValue, 'base64').toString('utf-8');
+                const ext = path.extname(decodedFilename).toLowerCase();
+                
+                if (ext === '.mp4' || ext === '.mkv') {
+                    isAllowed = true;
+                }
+            }
+        });
+    } catch (e) {
+        return res.status(400).send('Corrupted Upload-Metadata header.');
+    }
+
+    if (!isAllowed) {
+        console.warn(`[SECURITY] Blocked invalid file type: ${decodedFilename}`);
+        return res.status(415).send('Unsupported Media Type. Only .mp4 and .mkv files are allowed.');
+    }
+
+    next(); 
 });
 
 app.all(/^\/upload($|\/.*)/, (req, res) => {

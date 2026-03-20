@@ -14,14 +14,17 @@ const hlsConfig = {
     maxStarvationDelay: 2,
     enableWorker: true,
     lowLatencyMode: false,
-    loader: null,
+    
+    fragLoadingTimeOut: 15000, 
+    manifestLoadingTimeOut: 10000,
+    levelLoadingTimeOut: 10000,
+    fragLoadingMaxRetry: 2, 
+    fragLoadingRetryDelay: 1000,
 }
 const p2pmlConfig = {
-    forwardSegmentCount: 15,
-    maxHistoryChunks: 15,
-    p2pDownloadMaxRetries: 1,
-    p2pSegmentDownloadTimeout: 1000,
-
+    P2P_THRESHOLD: 4,
+    forwardSegmentCount: 3, 
+    maxHistoryChunks: 6,
 }
 const CONFIG = {
     SYNC_THRESHOLD_SECONDS: 1.5,
@@ -29,12 +32,13 @@ const CONFIG = {
     HEARTBEAT_INTERVAL_MS: 3000,
     SEEK_SKIP_SECONDS: 5
 };
+const debounceTimer = 500;
 
 let idleTimer;
 let hls = null;
-let syncLockTimer = null; 
-let internalChange = false;
-let pendingPlayListener = null;
+let isScrubbing = false;
+let currentBasePath = "";
+let spriteCues = [];
 
 const wrapper = document.getElementById('video-wrapper');
 const video = document.getElementById('myVideo');
@@ -42,6 +46,7 @@ const videoLoader = document.getElementById('video-loader');
 const controls = document.querySelector('.video-overlay');
 const progressBar = document.getElementById('progress-bar');
 const progressContainer = document.querySelector('.progress-container');
+const thumbPreview = document.getElementById('thumbnail-preview');
 const timeDisplay = document.getElementById('time-display');
 const playPauseIcon = document.getElementById('play-pause-icon');
 const ccBtn = document.getElementById('subtitle-btn');
@@ -52,10 +57,10 @@ const screenBtn = document.getElementById('screen-play-btn')
 export function setupVideoPlayer() {
     setUpVideoUI();
 
-    let isBufferingLocal = false;
+    let isCurrentlyBuffering = false;
     let wasPlayingBeforeScrub = false;
-    let mousedown = false;
-    let lastThrottleEmit = 0;
+    let bufferDebounceTimer = null;
+    let microGapTimer = null;
 
     if ('mediaSession' in navigator) {
         navigator.mediaSession.setActionHandler('play', () => {
@@ -70,94 +75,160 @@ export function setupVideoPlayer() {
 
         navigator.mediaSession.setActionHandler('seekbackward', () => {
             if (State.sync_perm) {
-                video.currentTime -= CONFIG.SEEK_SKIP_SECONDS;
-                emitSync('seeking', video.currentTime);
+                emitSync('seeking', video.currentTime - CONFIG.SEEK_SKIP_SECONDS);
             } else sync();
         });
 
         navigator.mediaSession.setActionHandler('seekforward', () => {
             if (State.sync_perm) {
-                video.currentTime += CONFIG.SEEK_SKIP_SECONDS;
-                emitSync('seeking', video.currentTime);
+                emitSync('seeking', video.currentTime + CONFIG.SEEK_SKIP_SECONDS);
             } else sync();
         });
     }
 
-    // --- 1. OUTBOUND: Host Interaction ---
     video.addEventListener('play', () => {
-        if (internalChange) return;
-        if (!State.sync_perm) { sync(); }
-        else{ emitSync('play', video.currentTime); }
-        
         playPauseIcon.src = "/img/pause.svg";
         playPauseIcon.alt = "pause";
     });
 
     video.addEventListener('pause', () => {
-        if (internalChange) return;
-        if (!State.sync_perm) { sync(); }
-        else{ emitSync('pause', video.currentTime);}
-
         playPauseIcon.src = "/img/play.svg";
         playPauseIcon.alt = "play";
     });
 
-    video.addEventListener('seeked', () => {
-        if (internalChange) return; 
-        if (!State.sync_perm) sync();
-        else emitSync('seeked', video.currentTime);
-    });
-
     progressContainer.addEventListener('mousedown', (e) => {
         if(!State.sync_perm) return;
-        mousedown = true;
+        isScrubbing = true;
         wasPlayingBeforeScrub = !video.paused;
-        video.pause();
-        emitSync('pause', video.currentTime);
-        scrub(e);
+        
+        // Update the visual bar instantly where they clicked
+        const rect = progressContainer.getBoundingClientRect();
+        const x = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
+        const clickTime = (x / rect.width) * video.duration;
+        
+        const percentage = (clickTime / video.duration) * 100;
+        progressBar.style.width = percentage + '%';
+        timeDisplay.innerText = `${formatTime(clickTime)} / ${formatTime(video.duration)}`;
     });
 
-    window.addEventListener('mouseup', () => {
-        if (State.sync_perm && mousedown) {
-            mousedown = false;
-            if(wasPlayingBeforeScrub) {
-                video.play(); 
-                emitSync('play', video.currentTime);
-            }
-            else{
-                emitSync('pause', video.currentTime);
+    window.addEventListener('mouseup', (e) => {
+        if (State.sync_perm && isScrubbing) {
+            isScrubbing = false;
+
+            const rect = progressContainer.getBoundingClientRect();
+            let x = e.clientX - rect.left;
+            x = Math.max(0, Math.min(x, rect.width));
+            const finalTime = (x / rect.width) * video.duration;
+            
+            if (!isNaN(finalTime)) {
+                
+                video.currentTime = finalTime; 
+                emitSync('seeking', finalTime);
+                
+                if(wasPlayingBeforeScrub) {
+                    video.play().catch(err => {
+                        if (err.name !== 'AbortError') console.error("Playback failed:", err);
+                    });
+                    emitSync('play', finalTime);
+                } else {
+                    emitSync('pause', finalTime);
+                }
             }
         }
     });
 
-    window.addEventListener('mousemove', (e) => {
-        if (State.sync_perm && mousedown){
-            scrub(e);
-            const now = Date.now();
-            if (now - lastThrottleEmit > 150) { 
-                emitSync('seeking', video.currentTime);
-                lastThrottleEmit = now;
+    progressContainer.addEventListener('mousemove', (e) => {
+        const rect = progressContainer.getBoundingClientRect();
+        let x = e.clientX - rect.left;
+        
+        x = Math.max(0, Math.min(x, rect.width)); 
+        const hoverTime = (x / rect.width) * video.duration;
+
+        if (!isNaN(hoverTime)) {
+            updateThumbnailPreview(hoverTime, x);
+
+            if (isScrubbing) {
+                const percentage = (hoverTime / video.duration) * 100;
+                progressBar.style.width = percentage + '%';
+                timeDisplay.innerText = `${formatTime(hoverTime)} / ${formatTime(video.duration)}`;
             }
         }
+    });
+
+    progressContainer.addEventListener('mouseleave', () => {
+        thumbPreview.style.display = 'none'; // Hide the thumbnail
     });
 
     setInterval(() => {
-        if (State.isHost && !video.paused && !internalChange) {
+        if (State.isHost && !video.paused && !window.isHotSwapping) {
             emitSync('heartbeat', video.currentTime);
         }
     }, CONFIG.HEARTBEAT_INTERVAL_MS);
 
     video.addEventListener('waiting', () => {
-        if (!isBufferingLocal) {
-            isBufferingLocal = true;
-            videoLoader.classList.add('visible');
-            if (State.hasJoined) clientBuffering();
+        if (!isCurrentlyBuffering) {
+            bufferDebounceTimer = setTimeout(() => {
+                isCurrentlyBuffering = true;
+                videoLoader.classList.add('visible');
+                if (State.hasJoined) clientBuffering(); 
+            }, debounceTimer);
+        }
+
+        if (!microGapTimer) {
+            microGapTimer = setInterval(() => {
+                if (video.buffered.length > 0) {
+                    const currentTime = video.currentTime;
+                    let isSafelyBuffered = false;
+                    
+                    for (let i = 0; i < video.buffered.length; i++) {
+                        const start = video.buffered.start(i);
+                        const end = video.buffered.end(i);
+                        const gapToStart = start - currentTime;
+                        const forwardBuffer = end - currentTime;
+                        
+                        // SCENARIO A: The Micro-Gap (Trapped just behind a chunk boundary)
+                        if (gapToStart > 0 && gapToStart < 0.5) {
+                            console.warn(`[RECOVERY] Micro-gap of ${gapToStart.toFixed(3)}s detected. Nudging forward...`);
+                            video.currentTime = start + 0.05; 
+                            break; 
+                        }
+
+                        // SCENARIO B: The Ghost Pause (Trapped inside a block with plenty of data)
+                        if (currentTime >= start && forwardBuffer >= 1.5) {
+                            isSafelyBuffered = true;
+                        }
+                    }
+
+                    // If the browser claims it's buffering, but we proved it has the data...
+                    if (isSafelyBuffered && isCurrentlyBuffering) {
+                        console.warn(`[RECOVERY] Decoder frozen inside a valid buffer! Kickstarting hardware...`);
+                        
+                        // 1. A microscopic nudge forces the C++ decoder to flush and find the Keyframe
+                        video.currentTime += 0.001; 
+                        
+                        // 2. Forcefully break the room out of the deadlock!
+                        isCurrentlyBuffering = false;
+                        videoLoader.classList.remove('visible');
+                        if (State.hasJoined) clientRecovered();
+                        
+                        // 3. Kill the detector
+                        clearInterval(microGapTimer);
+                        microGapTimer = null;
+                    }
+                }
+            }, 1000); 
         }
     });
 
-    video.addEventListener('playing', () => {
-        if (isBufferingLocal) {
-            isBufferingLocal = false;
+    video.addEventListener('canplay', () => {
+        if (bufferDebounceTimer) clearTimeout(bufferDebounceTimer);
+        if (microGapTimer) {
+            clearInterval(microGapTimer);
+            microGapTimer = null;
+        }
+        
+        if (isCurrentlyBuffering) {
+            isCurrentlyBuffering = false;
             videoLoader.classList.remove('visible');
             if (State.hasJoined) clientRecovered();
         }
@@ -180,7 +251,7 @@ export function setupVideoPlayer() {
         if(State.sync_perm){
             if (e.key === " " || e.code === "Space") togglePlay();
             else if (e.key === "ArrowRight") {
-                video.currentTime += CONFIG.SEEK_SKIP_SECONDS; 
+                video.currentTime += CONFIG.SEEK_SKIP_SECONDS;
                 emitSync('seeking', video.currentTime);
             } else if (e.key === "ArrowLeft") {
                 video.currentTime -= CONFIG.SEEK_SKIP_SECONDS;
@@ -198,6 +269,12 @@ export function setupVideoPlayer() {
     
     wrapper.addEventListener('fullscreenchange', resetIdleTimer);
     wrapper.addEventListener('webkitfullscreenchange', resetIdleTimer);
+
+    video.addEventListener('loadedmetadata', () => {
+        if (video.currentTime === 0 && !window.isHotSwapping) {
+            video.currentTime = 0.001; 
+        }
+    });
 }
 
 export function setUpVideoUI(){
@@ -211,18 +288,6 @@ export function setUpVideoUI(){
     document.getElementById('volume-slider').addEventListener('input', (e) => {video.volume = e.target.value;});
 }
 
-export function handleApplySync(data) {
-    const timeDiff = Math.abs(video.currentTime - data.time);
-
-    if (data.type !== 'heartbeat' || timeDiff > CONFIG.SYNC_THRESHOLD_SECONDS) {
-        if (video.readyState >= 1) { 
-            executeSync(data);
-        } else {
-            video.addEventListener('loadedmetadata', () => executeSync(data), { once: true });
-        }
-    }
-}
-
 export function joinVideo(){
     wrapper.style.display = 'flex';
     video.style.display = 'block';
@@ -232,88 +297,72 @@ export function joinVideo(){
     sync();
 }
 
-export async function setupVideo(filename) {
+export async function setupVideo(filename, startOffset = -1) {
     if (!filename) return;
+    playPauseIcon.src = "/img/play.svg";
+    playPauseIcon.alt = "play";
 
     const title = document.getElementById('video-title');
     if (hls) { hls.destroy(); hls = null; }
 
+    const trackElement = video.querySelector('track[kind="subtitles"]');
+    if (trackElement) {
+        if (trackElement.track) {
+            trackElement.track.mode = 'hidden'; 
+        }
+        video.removeChild(trackElement);
+    }
+
     video.innerHTML = '';
     ccBtn.style.display = 'none'; 
 
-    // 1. Clean slashes and force strict URI encoding for EVERY folder level
     const cleanName = filename.replace(/\\/g, '/');
     const encodedPath = cleanName.split('/').map(encodeURIComponent).join('/');
-    
-    // 2. Build the absolute URLs
     const videoUrl = `${window.location.origin}/media/compressed/${encodedPath}`;
     const basePath = videoUrl.substring(0, videoUrl.lastIndexOf('/'));
+    currentBasePath = basePath;
+    spriteCues = [];
 
-    // 3. Fetch Metadata (with Cache Buster)
-    try {
-        const metaRes = await fetch(`${basePath}/meta.json?t=${Date.now()}`);
-        if (metaRes.ok) {
-            const metaInfo = await metaRes.json();
-            title.innerText = metaInfo.title;
-        } else {
-            // Fallback: Grab the folder name and strip "_HLS"
-            title.innerText = cleanName.split('/').slice(-2, -1)[0].replace('_HLS', '');
-        }
-    } catch (e) {
-        title.innerText = cleanName.split('/').slice(-2, -1)[0].replace('_HLS', '');
-    }
-
-    // --- SUBTITLE CHECK ---
-    checkSubtitles(filename, (hasSubtitles) => {
-        if (hasSubtitles) {
-            const track = document.createElement('track');
-            track.kind = 'subtitles';
-            track.label = 'English';
-            track.srclang = 'en';
-            track.src = `${basePath}/subtitles.vtt`;
-            track.default = true;
-            video.appendChild(track);
-
-            track.addEventListener('load', () => {
-                if (video.textTracks.length > 0) {
-                    video.textTracks[0].mode = 'showing';
-                    ccBtn.style.display = 'block';
-                    ccBtn.style.color = "#ff0000"; 
-                    ccBtn.style.opacity = "1";
-                }
-            });
-        } else {
-            ccBtn.style.display = 'none';
-        }
-    });
-
-    // --- HLS INITIALIZATION ---
     if (filename.endsWith('.m3u8')) {
         video.removeAttribute('src'); 
 
         if (typeof Hls !== 'undefined' && Hls.isSupported()) {
+            if (startOffset > -1) {
+                hlsConfig.startPosition = startOffset;
+            } else {
+                delete hlsConfig.startPosition; // Clean up for normal loads
+            }
+
             const savedQuality = localStorage.getItem('hlsQuality');
             if (savedQuality !== null) hlsConfig.startLevel = parseInt(savedQuality);
+
+            const currentUserCount = Object.keys(State.usersArray || {}).length;
 
             let p2pEngine = null;
             const p2pmlGlobal = window.p2pml;
 
-            if (p2pmlGlobal && p2pmlGlobal.hlsjs && p2pmlGlobal.hlsjs.Engine.isSupported()) {
+            const currentHost = window.location.host;
+            const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            
+            const dynamicTrackerUrl = `${wsProtocol}//${currentHost}/tracker/`;
+
+            if (currentUserCount >= p2pmlConfig.P2P_THRESHOLD && p2pmlGlobal && p2pmlGlobal.hlsjs && p2pmlGlobal.hlsjs.Engine.isSupported()) {
+                //console.log(`[NETWORK] Room size is ${currentUserCount}. Activating P2P Swarm to save server bandwidth...`);
+                
                 p2pEngine = new p2pml.hlsjs.Engine({
                     segments: {
-                        forwardSegmentCount: p2pmlConfig.forwardSegmentCount,
-                        maxHistoryChunks: p2pmlConfig.maxHistoryChunks
+                        forwardSegmentCount: p2pmlConfig.forwardSegmentCount, 
+                        maxHistoryChunks: p2pmlConfig.maxHistoryChunks     
                     },
                     loader: {
-                        trackerAnnounce: [import.meta.env.VITE_TRACKER_URL],
-                        p2pDownloadMaxRetries: p2pmlConfig.p2pDownloadMaxRetries,
-                        p2pSegmentDownloadTimeout: p2pmlConfig.p2pSegmentDownloadTimeout,
-                        httpUseRanges: true
+                        trackerAnnounce: [dynamicTrackerUrl],
+                        httpUseRanges: false
                     }
                 });
                 hlsConfig.loader = p2pEngine.createLoaderClass();
             } else {
-                console.warn("P2P Engine not found or not supported. Falling back to standard HLS.");
+                //console.log(`[NETWORK] Room size is ${currentUserCount}. Using ultra-stable direct Server connection.`);
+                delete hlsConfig.loader; 
             }
 
             hls = new Hls(hlsConfig);
@@ -323,7 +372,6 @@ export async function setupVideo(filename) {
             hls.attachMedia(video);
             
             hls.on(Hls.Events.MANIFEST_PARSED, function() {
-                //console.log("HLS Manifest Parsed & Ready");
                 const qualitySelector = document.getElementById('quality-selector');
                 qualitySelector.style.display = 'inline-block';
                 qualitySelector.innerHTML = '<option value="-1" style="color: black;">Auto</option>'; 
@@ -331,8 +379,7 @@ export async function setupVideo(filename) {
                 hls.levels.forEach((level, index) => {
                     const option = document.createElement('option');
                     option.value = index; 
-
-                    let labelName = `${level.height}p`; // Fallback
+                    let labelName = `${level.height}p`;
                     if (level.width === 1920) labelName = "1080p";
                     else if (level.width === 1280) labelName = "720p";
                     else if (level.width === 854) labelName = "480p";
@@ -349,18 +396,11 @@ export async function setupVideo(filename) {
 
                 qualitySelector.addEventListener('change', (e) => {
                     const newLevel = parseInt(e.target.value);
-                    hls.currentLevel = newLevel; 
+                    hls.currentLevel = newLevel;
+                    hls.loadLevel = newLevel;   
                     
                     localStorage.setItem('hlsQuality', newLevel);
-                    
-                    //console.log(newLevel === -1 ? "Quality: Auto" : `Quality forced to: ${hls.levels[newLevel].height}p`);
                 });
-
-                if (State.hasJoined) {
-                    if (video.currentSrc || video.src) {
-                        video.play().catch(e => console.error("HLS Autoplay blocked:", e));
-                    }
-                }
             });
 
             hls.on(Hls.Events.LEVEL_SWITCHED, function(event, data) {
@@ -385,6 +425,12 @@ export async function setupVideo(filename) {
                     switch (data.type) {
                         case Hls.ErrorTypes.NETWORK_ERROR:
                             console.warn("Network error. Retrying...", data);
+                            
+                            const savedQuality = localStorage.getItem('hlsQuality');
+                            if (savedQuality !== null && savedQuality !== "-1") {
+                                hls.loadLevel = parseInt(savedQuality); 
+                            }
+                            
                             setTimeout(() => hls.startLoad(), 2000);
                             break;
                         case Hls.ErrorTypes.MEDIA_ERROR:
@@ -393,7 +439,6 @@ export async function setupVideo(filename) {
                             break;
                         case Hls.ErrorTypes.OTHER_ERROR:
                             if (data.details === 'internalException') {
-                                // Exposing the actual error object so we aren't blind!
                                 console.error("[DEMUXER CRASH] FMP4 parsing failed! The internal error is:", data.err);
                             }
                             hls.destroy();
@@ -407,34 +452,56 @@ export async function setupVideo(filename) {
             });
         } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
             video.src = videoUrl;
-            video.addEventListener('loadedmetadata', function() {
-                if (State.hasJoined) video.play().catch(e => console.error("Apple Autoplay blocked:", e));
-            }, { once: true });
         }
     } else {
-        // --- MP4 LOGIC ---
         video.src = videoUrl;
         video.load(); 
-        if (State.hasJoined) {
-            video.play().catch(e => {
-                if (e.name !== 'AbortError') {
-                    //console.log("MP4 Autoplay blocked:", e);
+    }
+
+    loadThumbnails(basePath);
+
+    try {
+        const metaRes = await fetch(`${basePath}/meta.json?t=${Date.now()}`);
+        if (metaRes.ok) {
+            const metaInfo = await metaRes.json();
+            title.innerText = metaInfo.title;
+        } else {
+            title.innerText = cleanName.split('/').slice(-2, -1)[0].replace('_HLS', '');
+        }
+    } catch (e) {
+        title.innerText = cleanName.split('/').slice(-2, -1)[0].replace('_HLS', '');
+    }
+
+    checkSubtitles(filename, (hasSubtitles) => {
+        if (hasSubtitles) {
+            const track = document.createElement('track');
+            track.kind = 'subtitles';
+            track.label = 'English';
+            track.srclang = 'en';
+            track.src = `${basePath}/subtitles.vtt`;
+            track.default = true;
+            video.appendChild(track);
+
+            track.addEventListener('load', () => {
+                if (video.textTracks.length > 0) {
+                    video.textTracks[0].mode = 'showing';
+                    ccBtn.style.display = 'block';
+                    ccBtn.style.color = "#ff0000"; 
+                    ccBtn.style.opacity = "1";
                 }
             });
+        } else {
+            ccBtn.style.display = 'none';
         }
-    }
+    });
 }
 
-function executeSync(data) {
-    internalChange = true;
-    if (syncLockTimer) clearTimeout(syncLockTimer);
-
-    if (pendingPlayListener) {
-        video.removeEventListener('canplay', pendingPlayListener);
-        pendingPlayListener = null;
+export function executeSync(data) {
+    if (isScrubbing) {
+        return; 
     }
 
-    const needsSeek = Math.abs(video.currentTime - data.time) > 0.1;
+    const needsSeek = Math.abs(video.currentTime - data.time) > 1.5;
 
     if (needsSeek) {
         if (video.readyState >= 1) {
@@ -444,48 +511,19 @@ function executeSync(data) {
                 video.currentTime = data.time;
             }, { once: true });
         }
-
-        video.addEventListener('seeked', () => {
-            if (syncLockTimer) clearTimeout(syncLockTimer);
-            syncLockTimer = setTimeout(() => { internalChange = false; }, 100);
-        }, { once: true });
     }
     
     if (data.type === 'play') {
-        if (video.readyState >= 3) {
-            video.play().catch(e => console.error("Playback failed:", e));
-        } else {
-            pendingPlayListener = () => {
-                internalChange = true; 
-                if (syncLockTimer) clearTimeout(syncLockTimer);
-                video.play().catch(e => console.error("Delayed play failed:", e));
-                
-                syncLockTimer = setTimeout(() => { internalChange = false; }, CONFIG.LOCK_TIMEOUT_MS);
-                pendingPlayListener = null;
-            };
-            video.addEventListener('canplay', pendingPlayListener, { once: true });
-        }
+        video.play().catch(e => {
+            if (e.name !== 'AbortError') console.error("Playback failed:", e);
+        });
+        videoLoader.classList.remove('visible');
     } else if (data.type === 'pause') {
         video.pause();
+    } else if (data.type === 'buffer') {
+        videoLoader.classList.add('visible');
+        video.pause();
     }
-
-    if (!needsSeek) {
-        syncLockTimer = setTimeout(() => { internalChange = false; }, CONFIG.LOCK_TIMEOUT_MS);
-    }
-}
-
-export function bufferPause(){
-    internalChange = true; 
-    video.pause();
-    setTimeout(() => { internalChange = false; }, 300);
-    videoLoader.classList.add('visible');
-}
-
-export function bufferPlay() {
-    internalChange = true;
-    video.play().catch(e => console.error("Auto-resume blocked:", e));
-    setTimeout(() => { internalChange = false; }, 300);
-    videoLoader.classList.remove('visible');
 }
 
 export function getVideoData(){
@@ -498,38 +536,29 @@ function resetIdleTimer() {
     clearTimeout(idleTimer);
     idleTimer = setTimeout(() => {
         if (!video.paused) wrapper.classList.add('is-idle'); screenBtn.classList.add('is-idle');
-        
     }, 2000);
 }
 
-// 2. The local logic functions
 function togglePlay() {
     if (!State.sync_perm) {
-        //console.log("Guests cannot control playback.");
+        sync();
         return;
     }
     if (video.paused) {
-        video.play();
+        emitSync('play', video.currentTime);
     } else {
-        video.pause();
+        emitSync('pause', video.currentTime);
     }
 }
 
-
 function toggleFullscreen() {
-    if (wrapper.requestFullscreen) { // Standard Web Fullscreen (Desktop, Android, iPad)
-        if (!document.fullscreenElement) {
-            wrapper.requestFullscreen();
-        } else {
-            document.exitFullscreen();
-        }
-    } else if (wrapper.webkitRequestFullscreen) { // Older WebKit fallback (Older Desktop/Android)
-        if (!document.webkitFullscreenElement) {
-            wrapper.webkitRequestFullscreen();
-        } else {
-            document.webkitExitFullscreen();
-        }
-    } else if (video.webkitEnterFullscreen) { // Older iPhones
+    if (wrapper.requestFullscreen) { 
+        if (!document.fullscreenElement) wrapper.requestFullscreen();
+        else document.exitFullscreen();
+    } else if (wrapper.webkitRequestFullscreen) { 
+        if (!document.webkitFullscreenElement) wrapper.webkitRequestFullscreen();
+        else document.webkitExitFullscreen();
+    } else if (video.webkitEnterFullscreen) { 
         video.webkitEnterFullscreen(); 
     }
 }
@@ -545,14 +574,12 @@ function toggleMute(){
 
 function toggleSubtitles() {
     const textTracks = video.textTracks;
-    
     if (textTracks.length > 0) {
         const track = textTracks[0];
-        
         if (track.mode === 'showing') {
             track.mode = 'hidden';
             ccIcon.src = "/img/closed-caption.svg"
-            ccBtn.style.opacity = "0.5";     
+            ccBtn.style.opacity = "0.5";    
         } 
         else {
             track.mode = 'showing';
@@ -562,11 +589,80 @@ function toggleSubtitles() {
     }
 }
 
-function scrub(e) {
-    const rect = progressContainer.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const scrubTime = (x / progressContainer.offsetWidth) * video.duration;
-    if (!isNaN(scrubTime)) video.currentTime = scrubTime;
+function loadThumbnails(basePath) {
+    fetch(`${basePath}/thumbnails.vtt?t=${Date.now()}`)
+        .then(res => {
+            if (!res.ok) throw new Error("VTT not found (404)");
+            return res.text();
+        })
+        .then(vttText => {
+            //console.log("Thumbnails VTT successfully loaded!");
+            const lines = vttText.replace(/\r/g, '').split('\n');
+            let currentCue = null;
+            spriteCues = []; 
+            
+            for (let i = 0; i < lines.length; i++) {
+                const line = lines[i].trim();
+                
+                if (line.includes('-->')) {
+                    const times = line.split('-->');
+                    currentCue = { 
+                        start: parseVttTime(times[0]), 
+                        end: parseVttTime(times[1]) 
+                    };
+                } else if (line.includes('#xywh=') && currentCue) {
+                    currentCue.payload = line;
+                    spriteCues.push(currentCue);
+                    currentCue = null; 
+                }
+            }
+        })
+        .catch(e => {
+        });
+}
+
+function parseVttTime(timeStr) {
+    if (!timeStr) return 0;
+    const parts = timeStr.trim().split(':');
+    if (parts.length === 3) {
+        return parseInt(parts[0]) * 3600 + parseInt(parts[1]) * 60 + parseFloat(parts[2]);
+    }
+    return 0;
+}
+
+function updateThumbnailPreview(hoverTime, mouseX) {
+    if (spriteCues.length === 0) {
+        thumbPreview.style.display = 'none';
+        return;
+    }
+
+    const activeCue = spriteCues.find(cue => hoverTime >= cue.start && hoverTime <= cue.end);
+
+    if (activeCue && activeCue.payload) {
+        const payload = activeCue.payload;
+        const hashIndex = payload.indexOf('#xywh=');
+        
+        if (hashIndex !== -1) {
+            const imgName = payload.substring(0, hashIndex);
+            const coordsStr = payload.substring(hashIndex + 6);
+            const [cx, cy, cw, ch] = coordsStr.split(',');
+
+            thumbPreview.style.display = 'block';
+            
+            const rect = progressContainer.getBoundingClientRect();
+            let safeX = mouseX;
+            if (safeX < 80) safeX = 80; 
+            if (safeX > rect.width - 80) safeX = rect.width - 80; 
+            thumbPreview.style.left = `${safeX}px`;
+            
+            // THE FIX: Added literal quotes around the URL!
+            thumbPreview.style.backgroundImage = `url("${currentBasePath}/${imgName}")`;
+            thumbPreview.style.backgroundSize = '1600px 900px'; 
+            thumbPreview.style.backgroundPosition = `-${cx}px -${cy}px`;
+        }
+    } else {
+        thumbPreview.style.display = 'none';
+    }
 }
 
 export function formatTime(seconds) {
@@ -581,4 +677,74 @@ export function formatTime(seconds) {
     ].filter(p => p !== null);
     
     return parts.join(":");
+}
+
+export function reloadVideo(){
+    if (hlsConfig.loader) return; 
+
+    //console.log("[NETWORK] Swarm threshold reached! Hot-swapping to P2P Engine...");
+    
+    const savedTime = video.currentTime;
+    const isCurrentlyPaused = video.paused;
+
+    window.isHotSwapping = true;
+
+    setupVideo(State.currentVideoFilename, savedTime).then(() => {
+        const resumePlayback = () => {
+            if (!isCurrentlyPaused) {
+                video.play().catch(e => console.warn(e));
+                setTimeout(() => {
+                    emitSync('play', video.currentTime);
+                }, 200);
+            }
+            window.isHotSwapping = false;
+        };
+        if (video.readyState >= 3) {
+            resumePlayback();
+        } else {
+            video.addEventListener('canplay', resumePlayback, { once: true });
+        }
+    });
+}
+
+export function inspectBuffer() {
+    const v = document.querySelector('video');
+    const currentTime = v.currentTime;
+    const buffers = v.buffered;
+    
+    //console.log(`%c--- BUFFER INSPECTION ---`, 'color: cyan; font-weight: bold;');
+    //console.log(`Playhead is stuck at: ${currentTime.toFixed(2)}s`);
+    
+    if (buffers.length === 0) {
+        //console.log("Buffer is completely empty!");
+        return;
+    }
+
+    let foundHole = false;
+
+    for (let i = 0; i < buffers.length; i++) {
+        const start = buffers.start(i);
+        const end = buffers.end(i);
+        //console.log(`Block ${i}: [${start.toFixed(2)}s  -->  ${end.toFixed(2)}s]`);
+        
+        // If the playhead is between this block and the next block, we found the hole!
+        if (currentTime >= end && i < buffers.length - 1) {
+            const nextStart = buffers.start(i + 1);
+            const missingSeconds = nextStart - end;
+            //console.log(`%c🚨 DEADLOCK HOLE DETECTED: Missing video from ${end.toFixed(2)}s to ${nextStart.toFixed(2)}s (Gap size: ${missingSeconds.toFixed(2)}s)`, 'color: red; font-weight: bold;');
+            
+            // Calculate which chunk number this is (Assuming 2-second chunks)
+            const missingChunkNum = Math.floor(end / 2);
+            //console.log(`%c👉 The player is desperately waiting for Chunk #${missingChunkNum}`, 'color: yellow;');
+            foundHole = true;
+        }
+    }
+
+    if (!foundHole) {
+        if (currentTime >= buffers.end(buffers.length - 1)) {
+            //console.log(`%c🚨 DEADLOCK: Reached the absolute end of the downloaded buffer. Waiting for chunk #${Math.floor(currentTime / 2)}`, 'color: orange; font-weight: bold;');
+        } else {
+            //console.log("%c✅ The playhead is currently safely inside a buffered block.", 'color: green;');
+        }
+    }
 }
