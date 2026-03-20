@@ -1,0 +1,14 @@
+watch-party-worker:
+    build: .
+    ports:
+      - "${WORKER_UPLOAD_PORT}:8081"
+    volumes:
+      - ${COMPRESSED_MEDIA_FOLDER}:/compressed
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]

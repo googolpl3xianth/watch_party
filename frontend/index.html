@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Watch Party</title>
+    
+    <link rel="stylesheet" href="style.css?v=6">
+    <link rel="apple-touch-icon" sizes="180x180" href="/img/favicon_io/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="/img/favicon_io/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/img/favicon_io/favicon-16x16.png">
+    <link rel="manifest" href="/img/favicon_io/site.webmanifest" crossorigin="use-credentials">
+
+    <script src="https://cdn.jsdelivr.net/npm/p2p-media-loader-core@latest/build/p2p-media-loader-core.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/p2p-media-loader-hlsjs@latest/build/p2p-media-loader-hlsjs.min.js"></script>
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js" defer></script>
+    <link href="https://releases.transloadit.com/uppy/v3.21.0/uppy.min.css" rel="stylesheet">
+    <script type="module" src="./js/upload.js"></script>
+    <script type="module" src="./js/main.js"></script>
+
+    <script>
+        if (new URLSearchParams(window.location.search).has('room')) {
+            document.documentElement.classList.add('direct-join');
+        }
+    </script>
+</head>
+<body>
+    <span id="page-loader" class="loader" role="progressbar" aria-label="Loading application"></span>
+
+    <section id="lobby">
+        <h1>Watch Party</h1>
+        <div class="lobby-card">
+            <button id="create-room-btn" class="primary-btn">Create New Room</button>
+            
+            <div class="divider">
+                <span>OR</span>
+            </div>
+
+            <p id="error-message" class="error-text"></p>
+            
+            <div class="join-box">
+                <input type="text" id="room-code-input" placeholder="Room Code" autocomplete="off" maxlength="8" aria-label="Enter Room Code">
+                <button id="join-room-btn" class="secondary-btn">Join</button>
+            </div>
+        </div>
+    </section>
+
+    <main id="room-interface">
+        
+        <header id="room-header">
+            <button id="home-btn" class="pill-btn" aria-label="Go Home">
+                <img src="/img/home.svg" alt="" width="24" height="24">
+            </button>
+            <h4 id="username">Name: </h4>
+            <button id="edit-name-btn" class="clean-btn" aria-label="Edit Username">
+                <img src="/img/edit.svg" alt="" width="24" height="24">
+            </button>
+        </header>
+
+        <div id="room-title">
+            <h2 id="room-display"></h2>
+            <button id="get-room-link-btn" class="clean-btn" aria-label="Copy Room Link">
+                <img src="/img/link.svg" alt="" width="24" height="24">
+            </button>
+        </div>
+
+        <aside id="sidebar-wrapper">
+            <div class="users">
+                <button id="user-count-btn" class="pill-btn" aria-label="Toggle User List">
+                    <img src="/img/users.svg" alt="users" width="24" height="24">
+                    <span id="user-count-text">0</span>
+                </button>
+                <div id="user-list" class="user-list"></div>
+            </div>
+        </aside>
+
+        <nav id="userMenu" class="context-menu" aria-label="User Actions">
+            <button id="change-role-btn" class="context-item perms-only" aria-label="change rolebutton">change permissions</button>
+            <button id="rename-btn" class="context-item" aria-label="rename button">rename</button>
+            
+            <div id="role-menu" class="context-menu">
+                <button id="role-change-host" class="context-item host-only" aria-label="Change to host">host</button>
+                <button id="role-change-admin" class="context-item host-only" aria-label="Change to admin">admin</button>
+                <button id="role-change-guest" class="context-item" aria-label="Change to guest">guest</button>
+            </div>
+        </nav>
+
+        <section id="media-controls" class="perms-only">
+            <label for="video-select">Select Video:</label>
+            <select id="video-select" class="select-class">
+                <option value="">-- Select a Video --</option>
+            </select>
+            <button id="load-video-btn" class="secondary-btn" aria-label="load video">Load for Everyone</button>
+            <button id="open-upload-modal-btn" class="clean-btn" aria-label="upload">
+                <img src="/img/upload.svg" alt="upload" width="24" height="24">
+            </button>
+        </section>
+        <div id="upload-area" style="display: none;"></div>
+
+        <p id="room-status">Waiting on Host to load video</p>
+
+        <div id="title-container">
+            <p id="video-title"></p>
+        </div>
+        <section id="join-gate">
+            <button id="join-btn" class="primary-btn" aria-label="join">Join & Sync</button>
+        </section>
+        <figure id="video-wrapper">
+            <span id="video-loader" class="loader" role="progressbar" aria-label="Buffering video"></span>
+
+            <video id="myVideo" playsinline controls crossorigin="anonymous" preload="auto"></video>
+
+            <button id="screen-play-btn" class="perms-only" aria-label="Play or Pause"></button>
+
+            <figcaption id="custom-controls" class="video-overlay">
+                <button id="play-pause-btn" class="control-btn perms-only" aria-label="Play or Pause">
+                    <img id="play-pause-icon" src="/img/play.svg" alt="" width="24" height="24">
+                </button>
+
+                <button id="sync-btn" class="control-btn" aria-label="Force Sync">
+                    <img id="sync-icon" src="/img/refresh.svg" alt="" width="24" height="24">
+                </button>
+
+                <div id="volume-control">
+                    <button id="mute-btn" class="control-btn" aria-label="Mute or Unmute">
+                        <img id="mute-icon" src="/img/volume.svg" alt="" width="24" height="24">
+                    </button>
+                    <input id="volume-slider" type="range" min="0" max="1" step="0.1" value="1" aria-label="Volume">
+                </div>
+
+                <span id="time-display" class="time-text">00:00 / 00:00</span>
+
+                <div class="progress-container" aria-label="Video Timeline">
+                    <div id="thumbnail-preview" class="thumbnail-preview"></div>
+                    <div id="progress-bar" class="progress-filled"></div>
+                </div>
+
+                <button id="subtitle-btn" class="control-btn" style="display: none;" aria-label="Toggle Subtitles">
+                    <img id="cc-icon" src="/img/closed-caption-filled.svg" alt="" width="24" height="24">
+                </button>
+
+                <select id="quality-selector" class="control-btn" style="display: none;" aria-label="Video Quality">
+                    <option value="-1">Auto</option>
+                </select>
+
+                <button id="fullscreen-btn" class="control-btn" aria-label="Toggle Fullscreen">
+                    <img src="/img/fullscreen.svg" alt="" width="24" height="24">
+                </button>
+            </figcaption>
+        </figure>
+    </main>
+</body>
+</html>

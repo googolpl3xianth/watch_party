@@ -4,14 +4,17 @@ services:
     security_opt:
       - no-new-privileges:true
     volumes:
-      - ${MEDIA_FOLDER}:/videos:ro
+      - ${COMPRESSED_MEDIA_FOLDER}:/media/compressed
   web-server:
     image: nginxinc/nginx-unprivileged:alpine
     volumes:
-      - ./public:/usr/share/nginx/html
+      - ./frontend/dist:/usr/share/nginx/html
       - ./nginx.conf:/etc/nginx/nginx.conf:ro
       - ./auth:/etc/nginx/auth:ro 
-      - ${MEDIA_FOLDER}:/videos:ro
+      - ${COMPRESSED_MEDIA_FOLDER}:/media/compressed:ro
+    networks:
+      - proxy-net
+      - default
     security_opt:
       - no-new-privileges:true
     depends_on:
@@ -22,20 +25,38 @@ services:
     security_opt:
       - no-new-privileges:true
     environment:
-      - PUID=1000 
-      - PGID=1000
-      - SUBDOMAINS=MY_SUBDOMAIN
-      - TOKEN=MY_TOKEN
+      - PUID=${PUID} 
+      - PGID=${PGID} 
+      - SUBDOMAINS=${MY_SUBDOMAIN}
+      - TOKEN=${DUCKDNS_TOKEN}
       - UPDATE_IP=both
       - LOG_FILE=false
-      - TZ=America/Los_Angeles
+      - TZ=${TZ}
     restart: unless-stopped
-  nginx-proxy-manager:
-    image: 'jc21/nginx-proxy-manager:latest'
-    ports:
-      - '80:80'
-      - '443:443'
-      - '81:81' # Admin UI
+  p2p-tracker:
+    build: 
+      context: .
+      dockerfile: Dockerfile.tracker
+    restart: unless-stopped
+#  cloudflare-tunnel: # For mobile server spin up
+#    image: cloudflare/cloudflared:latest
+#    command: tunnel --url http://web-server:8080
+#    depends_on:
+#      - web-server
+#    restart: unless-stopped
+  watch-party-worker:
+    build: ./watch-party-worker
     volumes:
-      - ./data:/data
-      - ./letsencrypt:/etc/letsencrypt
+      - ${COMPRESSED_MEDIA_FOLDER}:/compressed
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+networks:
+  proxy-net:
+    external: true
