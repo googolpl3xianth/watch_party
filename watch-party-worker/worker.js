@@ -1,7 +1,7 @@
 const express = require('express');
 const { Server, EVENTS } = require('@tus/server');
 const { FileStore } = require('@tus/file-store');
-const { exec } = require('child_process');
+const { spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 const { io } = require('socket.io-client');
@@ -53,7 +53,7 @@ tusServer.on(EVENTS.POST_FINISH, (req, res, upload) => {
 
     const bashCommand = `bash /app/convert_videos.sh "${uploadedFilePath}" "${outputFolder}"`;
 
-    const localSocket = io('ws://sync-server:3000', {
+    const localSocket = io(`ws://${process.env.SERVER_IP}:3000`, {
         transports: ['websocket'],
         reconnection: false
     });
@@ -65,12 +65,21 @@ tusServer.on(EVENTS.POST_FINISH, (req, res, upload) => {
             fileSize: upload.size // Pass the size so the frontend can calculate the estimate!
         });
 
-        exec(bashCommand, async (error, stdout, stderr) => {
-            if (error) {
-                console.error(`[ERROR] Bash Script Failed: ${error.message}`);
+        const workerProcess = spawn('bash', ['/app/convert_videos.sh', uploadedFilePath, outputFolder]);
+
+        workerProcess.stdout.on('data', (data) => {
+            console.log(`[BASH]: ${data.toString().trim()}`);
+        });
+
+        workerProcess.stderr.on('data', (data) => {
+            //console.error(`[FFMPEG]: ${data.toString().trim()}`);
+        });
+
+        workerProcess.on('close', (code) => {
+            if (code !== 0) {
+                console.error(`[ERROR] Bash Script Failed with exit code ${code}`);
                 return;
             }
-            if (stderr) console.error(`[BASH-STDERR]: ${stderr}`);
 
             const relativePath = `${roomId}/${videoFolderName}/master.m3u8`;
 
@@ -80,7 +89,6 @@ tusServer.on(EVENTS.POST_FINISH, (req, res, upload) => {
                 finalPath: relativePath
             });
             
-            // Disconnect half a second later to keep memory clean
             setTimeout(() => localSocket.disconnect(), 500);
         });
     });

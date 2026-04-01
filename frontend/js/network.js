@@ -137,7 +137,6 @@ function setupSocketLogic() {
         
         setTimeout(() => {
             hideRoomStatus();
-            requestChange(finalPath);
         }, 1000); 
     });
 
