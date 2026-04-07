@@ -9,8 +9,10 @@ $originalGuid = ([regex]::Match($activeScheme, '(?<=GUID: ).*?(?=\s*\()')).Value
 
 powercfg /setactive c3ec271b-edf6-44e2-8232-7c2fc4879cfd
 
-$sourceDir = "C:\Users\verti\Projects\watch_party\media\uncompressed"
-$destDir   = "C:\Users\verti\Projects\watch_party\media\compressed"
+#$sourceDir = "C:\Users\verti\Projects\watch_party\media\uncompressed"
+#$destDir   = "C:\Users\verti\Projects\watch_party\media\compressed"
+$sourceDir = "\\homeserver\uncompressed"
+$destDir = "\\homeserver\compressed"
 
 $targetAudioLang = "jpn"
 $targetSubLang   = "eng"
@@ -52,6 +54,12 @@ foreach ($vid in $videoFiles) {
         
         $subCmd = "ffmpeg -v warning -i `"$inputPath`" -map 0:$firstSubIndex -c:s webvtt `"$subPath`" -y"
         Invoke-Expression $subCmd
+
+        Write-Host "  -> Scrubbing ASS formatting and vector graphics from VTT..." -ForegroundColor DarkGray
+        $vttText = Get-Content -Path $subPath -Raw
+        $vttText = $vttText -replace '\{.*?\}', ''
+        $vttText = $vttText -replace '(?m)^m\s+[-0-9\.].*$', ''
+        $vttText | Set-Content -Path $subPath -Encoding utf8
     } else {
         Write-Host "  -> No subtitles found in $targetSubLang. Skipping extraction." -ForegroundColor DarkGray
     }
@@ -106,14 +114,14 @@ foreach ($vid in $videoFiles) {
         
     $ffCommand = "ffmpeg " + ($ffmpegArgs -join " ")
     
-    $cmdArgs = "/c cd /d `"$outDir`" && $ffCommand"
+    $cmdArgs = "/c pushd `"$outDir`" && $ffCommand"
     
     Start-Process -FilePath "cmd.exe" -ArgumentList $cmdArgs -Wait -NoNewWindow
     
     Write-Host "  -> Generating Thumbnail Sprite Sheets..." -ForegroundColor Yellow
     
     $spriteCmd = "ffmpeg -loglevel warning -i `"$inputPath`" -vf `"fps=1/10,scale=160:90,tile=10x10`" `"$outDir\sprite_%03d.jpg`" -y"
-    Start-Process -FilePath "cmd.exe" -ArgumentList "/c cd /d `"$outDir`" && $spriteCmd" -Wait -NoNewWindow
+    Start-Process -FilePath "cmd.exe" -ArgumentList "/c pushd `"$outDir`" && $spriteCmd" -Wait -NoNewWindow
 
     Write-Host "  -> Generating thumbnails.vtt coordinate file..." -ForegroundColor Yellow
     
@@ -133,13 +141,13 @@ foreach ($vid in $videoFiles) {
         $endStr   = '{0:hh\:mm\:ss\.fff}' -f [timespan]::FromSeconds($endTime)
 
         # Calculate which sprite image this belongs to
-        $imgIndex = [math]::Floor($i / 100) + 1
+        $imgIndex = [int]([math]::Floor($i / 100)) + 1
         $imgName = "sprite_{0:D3}.jpg" -f $imgIndex
 
         # Calculate X, Y coordinates on the 10x10 grid
         $subIndex = $i % 100
         $col = $subIndex % 10
-        $row = [math]::Floor($subIndex / 10)
+        $row = [int]([math]::Floor($subIndex / 10))
 
         $x = $col * 160
         $y = $row * 90

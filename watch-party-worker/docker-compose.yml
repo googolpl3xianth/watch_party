@@ -1,9 +1,14 @@
-watch-party-worker:
+services:
+  watch-party-worker:
     build: .
     ports:
-      - "${WORKER_UPLOAD_PORT}:8081"
+      - "${WORKER_IP}:8081:8081"
     volumes:
-      - ${COMPRESSED_MEDIA_FOLDER}:/compressed
+      - remote_compressed:/compressed
+      - ${UNCOMPRESSED_MEDIA_FOLDER}:/uncompressed
+    environment:
+      - UPLOAD_KEY=${UPLOAD_KEY}
+      - SERVER_IP=${SERVER_IP}
     restart: unless-stopped
     deploy:
       resources:
@@ -11,4 +16,12 @@ watch-party-worker:
           devices:
             - driver: nvidia
               count: 1
-              capabilities: [gpu]
+              capabilities: [gpu, video, utility]
+
+volumes:
+  remote_compressed:
+    driver: local
+    driver_opts:
+      type: cifs
+      o: "username=${SMB_USERNAME},password=${SMB_PASSWORD},vers=3.0"
+      device: "//${SERVER_IP}/compressed"

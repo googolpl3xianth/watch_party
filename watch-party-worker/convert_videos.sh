@@ -54,14 +54,13 @@ if [ "$VIDEO_CODEC" = "h264" ]; then
     "master.m3u8"
 else
     echo "  -> Heavy Codec ($VIDEO_CODEC) detected. Initiating Fast GPU TRANSCODE..."
-    # Includes all the Anime VFR timestamp fixes (-fflags +genpts, -fps_mode cfr, -avoid_negative_ts)
     ffmpeg -loglevel warning -fflags +genpts -i "$INPUT_PATH" \
-    -c:v h264_nvenc -b:v 6000k -maxrate:v 8000k -bufsize:v 16000k -g 48 -no-scenecut 1 \
+    -c:v h264_nvenc -pix_fmt yuv420p -b:v 6000k -maxrate:v 8000k -bufsize:v 16000k -g 48 -no-scenecut 1 \
     -map 0:v:0 -map "$AUDIO_MAP" -c:a aac -b:a 192k -ac 2 \
     -fps_mode cfr -max_muxing_queue_size 1024 \
     -f hls -hls_time "$CHUNK_SIZE" -hls_playlist_type vod -hls_segment_type fmp4 \
     -avoid_negative_ts make_non_negative \
-    -hls_segment_filename "$chunk_%03d.m4s" \
+    -hls_segment_filename "chunk_%03d.m4s" \
     -hls_fmp4_init_filename "init.mp4" \
     "master.m3u8"
 fi

@@ -105,8 +105,26 @@ module.exports = function(io, socket) {
 
     socket.on('worker-transcode-ready', (data) => {
         if (data.secret !== `${process.env.UPLOAD_KEY}`) return;
+        
         if (data.roomId && data.finalPath) {
             io.to(data.roomId).emit('transcode-ready', data.finalPath);
+
+            if (activeRooms[data.roomId]) {
+                activeRooms[data.roomId].video_name = data.finalPath;
+                io.to(data.roomId).emit('load-new-video', data.finalPath);
+            }
+
+            getVideoList('/media/compressed').then(list => {
+                const filteredList = list.filter(item => {
+                    const parts = item.split('/');
+                    const topFolder = parts[0];
+
+                    if (topFolder === data.roomId) return true;
+                    if (topFolder.length === 6) return false; 
+                    return true; 
+                });
+                io.to(data.roomId).emit('video-list', filteredList);
+            }).catch(err => console.error("Failed to update list:", err));
         }
     });
 

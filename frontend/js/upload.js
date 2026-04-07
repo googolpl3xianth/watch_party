@@ -12,6 +12,7 @@ const httpProtocol = window.location.protocol;
 const dynamicUploadUrl = `${httpProtocol}//${currentHost}/upload/`;
 
 document.addEventListener('DOMContentLoaded', () => {
+    let isUploading = false;
     const uppy = new Uppy({
         meta: { roomId: roomId },
         onBeforeFileAdded: (currentFile, files) => {
@@ -34,24 +35,31 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     uppy.on('upload', () => {
+        isUploading = true;
         changeRoomStatus("Host is uploading a video...");
     });
 
     uppy.on('progress', (progress) => {
+        if (!isUploading) return;
         changeRoomStatus(`Uploading to server... ${progress}%`);
     });
 
     uppy.on('cancel-all', () => {
+        if (!isUploading) return; 
+        
+        isUploading = false;
         changeRoomStatus("Waiting on Host to load video");
     });
 
     uppy.on('complete', (result) => {
-    const dashboard = uppy.getPlugin('Dashboard');
+        isUploading = false;
+
+        const dashboard = uppy.getPlugin('Dashboard');
         if (dashboard) {
             if (document.activeElement) document.activeElement.blur();
             dashboard.closeModal();
         }
-        // We do nothing else! We wait for the server to tell us it started.
+        
         setTimeout(() => uppy.cancelAll(), 1000);
     });
 });
