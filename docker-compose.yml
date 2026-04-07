@@ -52,7 +52,11 @@ services:
 #    build: ./watch-party-worker
 #    volumes:
 #      - ${COMPRESSED_MEDIA_FOLDER}:/compressed
+#      - ${UNCOMPRESSED_MEDIA_FOLDER}:/uncompressed
 #    restart: unless-stopped
+#    environment:
+#      - UPLOAD_KEY=${UPLOAD_KEY}
+#      - SERVER_IP=${SERVER_IP}
 #    deploy:
 #      resources:
 #        reservations:

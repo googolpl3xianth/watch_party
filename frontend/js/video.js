@@ -334,7 +334,7 @@ export async function setupVideo(filename, startOffset = -1) {
             }
 
             const savedQuality = localStorage.getItem('hlsQuality');
-            if (savedQuality !== null) hlsConfig.startLevel = parseInt(savedQuality);
+            delete hlsConfig.startLevel;
 
             const currentUserCount = Object.keys(State.usersArray || {}).length;
 
@@ -368,7 +368,8 @@ export async function setupVideo(filename, startOffset = -1) {
             hls = new Hls(hlsConfig);
             if (p2pEngine) p2pml.hlsjs.initHlsJsPlayer(hls);
             
-            hls.loadSource(videoUrl);
+            const cacheBustedUrl = `${videoUrl}?t=${Date.now()}`;
+            hls.loadSource(cacheBustedUrl);
             hls.attachMedia(video);
             
             hls.on(Hls.Events.MANIFEST_PARSED, function() {
@@ -390,8 +391,12 @@ export async function setupVideo(filename, startOffset = -1) {
                 });
 
                 if (savedQuality !== null) {
-                    qualitySelector.value = savedQuality;
+                    qualitySelector.value = parseInt(savedQuality);
                     hls.currentLevel = parseInt(savedQuality); 
+                } else {
+                    qualitySelector.value = "-1";
+                    hls.currentLevel = -1;
+                    localStorage.setItem('hlsQuality', '-1');
                 }
 
                 qualitySelector.addEventListener('change', (e) => {
