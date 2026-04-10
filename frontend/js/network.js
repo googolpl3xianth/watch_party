@@ -40,6 +40,13 @@ export function initializeNetwork(){
 
         setupLobbyUI();
     });
+
+    socket.on('connect', () => {
+        if (State.hasJoined && roomId) {
+            //console.log("[NETWORK] Reconnected to server! Re-joining room...");
+            socket.emit('join-room', roomId);
+        }
+    });
 }
 
 function setupSocketUI(){

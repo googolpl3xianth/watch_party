@@ -13,9 +13,11 @@ services:
     image: nginxinc/nginx-unprivileged:alpine
     volumes:
       - ./frontend/dist:/usr/share/nginx/html
-      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx.template.conf:/tmp/nginx.template.conf:ro
       - ./auth:/etc/nginx/auth:ro 
       - ${COMPRESSED_MEDIA_FOLDER}:/media/compressed:ro
+    environment:
+      - WORKER_IP=${WORKER_IP}
     networks:
       - proxy-net
       - default
@@ -24,6 +26,8 @@ services:
     depends_on:
       - sync-server
     restart: unless-stopped
+    command: >
+      /bin/sh -c "envsubst '$$WORKER_IP' < /tmp/nginx.template.conf > /tmp/nginx.conf && nginx -c /tmp/nginx.conf -g 'daemon off;'"
   duckdns:
     image: lscr.io/linuxserver/duckdns:latest
     security_opt:

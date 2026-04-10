@@ -56,10 +56,10 @@ foreach ($vid in $videoFiles) {
         Invoke-Expression $subCmd
 
         Write-Host "  -> Scrubbing ASS formatting and vector graphics from VTT..." -ForegroundColor DarkGray
-        $vttText = Get-Content -Path $subPath -Raw
+        $vttText = Get-Content -LiteralPath $subPath -Raw
         $vttText = $vttText -replace '\{.*?\}', ''
         $vttText = $vttText -replace '(?m)^m\s+[-0-9\.].*$', ''
-        $vttText | Set-Content -Path $subPath -Encoding utf8
+        $vttText | Set-Content -LiteralPath $subPath -Encoding utf8
     } else {
         Write-Host "  -> No subtitles found in $targetSubLang. Skipping extraction." -ForegroundColor DarkGray
     }
@@ -129,7 +129,7 @@ foreach ($vid in $videoFiles) {
     $duration = [math]::Floor([double]$durationStr)
     $vttPath = Join-Path -Path $outDir -ChildPath "thumbnails.vtt"
 
-    "WEBVTT`n" | Out-File -FilePath $vttPath -Encoding utf8
+    "WEBVTT`n" | Out-File -LiteralPath $vttPath -Encoding utf8
 
     $thumbCount = [math]::Floor($duration / 10)
     for ($i = 0; $i -le $thumbCount; $i++) {
@@ -153,8 +153,8 @@ foreach ($vid in $videoFiles) {
         $y = $row * 90
 
         # Write to VTT
-        "$startStr --> $endStr" | Out-File -FilePath $vttPath -Append -Encoding utf8
-        "$imgName#xywh=$x,$y,160,90`n" | Out-File -FilePath $vttPath -Append -Encoding utf8
+        "$startStr --> $endStr" | Out-File -LiteralPath $vttPath -Append -Encoding utf8
+        "$imgName#xywh=$x,$y,160,90`n" | Out-File -LiteralPath $vttPath -Append -Encoding utf8
     }
 
     Write-Host "[SUCCESS] Finished $baseName`n" -ForegroundColor Green

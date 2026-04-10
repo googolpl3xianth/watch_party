@@ -229,7 +229,7 @@ module.exports = function(io, socket) {
                     delete activeRooms[roomToCleanup]; 
                     //console.log(`Room ${roomToCleanup} deleted because it is empty.`);
                 }
-            }, 5000);
+            }, 60000);
         }
     });
 };
