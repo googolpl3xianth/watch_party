@@ -38,7 +38,12 @@ module.exports = function(io, socket) {
         creationSpamFilter.set(userIp, now);
 
         const newID = Math.random().toString(36).substring(2, 8);
-        activeRooms[newID] = {currentTime: 0, isPaused: true, host: null, users: {}, bufferingUsers: new Set()};
+        activeRooms[newID] = {currentTime: 0, 
+                              isPaused: true, 
+                              host: null, 
+                              users: {}, 
+                              bufferingUsers: new Set(),
+                              videoQuality: -1,};
 
         //console.log(`Room created: ${newID} by host: ${socket.id}`);
         socket.emit('room-created', newID);
@@ -48,6 +53,10 @@ module.exports = function(io, socket) {
         if (activeRooms[roomId]) {
             socket.join(roomId);
             socket.data.currentRoomId = roomId;
+
+            if (activeRooms[roomId].videoQuality === undefined) {
+                activeRooms[roomId].videoQuality = -1; // Default to Auto
+            }
 
             let role = 'guest';
             const users = activeRooms[roomId].users;
@@ -64,7 +73,9 @@ module.exports = function(io, socket) {
                 };
             }
             //console.log(`Roomid: ${socket.data.currentRoomId} User Joined: ${socket.id}`);
-            socket.emit('join-success', users[socket.id].role);
+            socket.emit('join-success', {
+                        role: users[socket.id].role,
+                        quality: activeRooms[roomId].videoQuality});
             io.to(roomId).emit('update-user-list', activeRooms[socket.data.currentRoomId].users);
 
             const currentRoomUsers = Object.keys(activeRooms[roomId].users).length;

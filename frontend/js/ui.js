@@ -158,7 +158,7 @@ export function updateUserCount(){
     }
 }
 
-export function updateUserList(socketId, username, role){
+export function updateUserList(socketId, username, role, buffering=null){
     username = username || State.usersArray[socketId].username;
     role = role || State.usersArray[socketId].role;
     let displayText = `${username} (${role})`;
@@ -174,15 +174,40 @@ export function updateUserList(socketId, username, role){
     }
 
     let userDiv = userList.querySelector(`.user-item[data-id="${socketId}"]`);
+    
     if (userDiv) {
-        userDiv.innerText = displayText;
+        let textSpan = userDiv.querySelector('.user-text');
+        if (textSpan) {
+            textSpan.innerText = displayText;
+        }
+
+        if(buffering !== null){
+            let bufferIndicator = userDiv.querySelector(`.loader`);
+            if(bufferIndicator){
+                if(buffering === false){
+                    bufferIndicator.style.display = 'none'
+                }
+                else if(buffering === true){
+                    bufferIndicator.style.display = 'flex'
+                }
+            }
+        }
     } else {
         userDiv = document.createElement('div');
         userDiv.classList.add('user-item'); 
         userDiv.dataset.id = socketId; 
-        userDiv.innerText = displayText; 
-        
         userDiv.style.cursor = "default";
+
+        let textSpan = document.createElement('span');
+        textSpan.classList.add('user-text');
+        textSpan.innerText = displayText;
+        userDiv.appendChild(textSpan);
+
+        let bufferIndicator = document.createElement('span');
+        bufferIndicator.classList.add('loader');
+        bufferIndicator.style.display = 'none';
+        bufferIndicator.style.position = 'default';
+        userDiv.appendChild(bufferIndicator);
 
         userList.appendChild(userDiv);
     }
@@ -232,6 +257,11 @@ export function showPermOnly(){
         hostElements.forEach(el => el.classList.remove('show-host'));
         guestElements.forEach(el => el.classList.add('show-guest'));
         permElements.forEach(el => el.classList.remove('show-perms'));
+    }
+
+    const qualitySelector = document.getElementById('quality-selector');
+    if (qualitySelector) {
+        qualitySelector.disabled = !State.sync_perm; 
     }
 }
 

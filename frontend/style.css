@@ -488,6 +488,11 @@ video::-webkit-media-text-track-container {
 }
 
 .user-item {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+
     color: var(--text-primary);
     padding: 10px 15px;
     border-bottom: 1px solid #333;
@@ -497,6 +502,14 @@ video::-webkit-media-text-track-container {
 
 .user-item:last-child { border-bottom: none; }
 .user-item:hover { background-color: #333; }
+
+.user-text {
+    flex-grow: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
 
 /* Context Menus */
 .context-menu {
@@ -579,7 +592,9 @@ video::-webkit-media-text-track-container {
 .loader {
     width: 10%;
     max-width: 60px;
-    min-width: 30px;
+    min-width: 20px;
+    flex-shrink: 0;
+
     aspect-ratio: 1 / 1;
     position: absolute;
     inset: 0; margin: auto; 
@@ -589,6 +604,16 @@ video::-webkit-media-text-track-container {
     border-radius: 50%;
     animation: rotation 1s linear infinite;
     display: none;
+}
+
+.user-item .loader {
+    position: static;
+    
+    top: auto; 
+    left: auto;
+    transform: none; 
+    
+    margin-left: auto;
 }
 
 .loader.visible { display: block; }

@@ -2,7 +2,7 @@
 import Hls from 'hls.js';
 window.Hls = Hls;
 import { State } from './state.js';
-import { emitSync, sync, checkSubtitles, clientBuffering, clientRecovered } from './network.js';
+import { emitSync, sync, checkSubtitles, clientBuffering, clientRecovered, emitQualityChange } from './network.js';
 
 const hlsConfig = {
     startLevel: -1,
@@ -22,9 +22,11 @@ const hlsConfig = {
     fragLoadingRetryDelay: 1000,
 }
 const p2pmlConfig = {
-    P2P_THRESHOLD: 4,
-    forwardSegmentCount: 3, 
-    maxHistoryChunks: 6,
+    P2P_THRESHOLD: 100,
+    forwardSegmentCount: 20, 
+    maxHistoryChunks: 15,
+    pieceBytesDownloadedCheckInterval: 1000,
+    peerPieceDownloadMaxDefault: 3000,
 }
 const CONFIG = {
     SYNC_THRESHOLD_SECONDS: 1.5,
@@ -333,7 +335,6 @@ export async function setupVideo(filename, startOffset = -1) {
                 delete hlsConfig.startPosition; // Clean up for normal loads
             }
 
-            const savedQuality = localStorage.getItem('hlsQuality');
             delete hlsConfig.startLevel;
 
             const currentUserCount = Object.keys(State.usersArray || {}).length;
@@ -357,6 +358,11 @@ export async function setupVideo(filename, startOffset = -1) {
                     loader: {
                         trackerAnnounce: [dynamicTrackerUrl],
                         httpUseRanges: false
+                    },
+                    p2p: {
+                        pieceBytesDownloadedCheckInterval: p2pmlConfig.pieceBytesDownloadedCheckInterval,
+                        peerPieceDownloadMaxDefault: p2pmlConfig.peerPieceDownloadMaxDefault,
+                        useBframes: false  
                     }
                 });
                 hlsConfig.loader = p2pEngine.createLoaderClass();
@@ -374,6 +380,7 @@ export async function setupVideo(filename, startOffset = -1) {
             
             hls.on(Hls.Events.MANIFEST_PARSED, function() {
                 const qualitySelector = document.getElementById('quality-selector');
+
                 qualitySelector.style.display = 'inline-block';
                 qualitySelector.innerHTML = '<option value="-1" style="color: black;">Auto</option>'; 
                 
@@ -390,21 +397,26 @@ export async function setupVideo(filename, startOffset = -1) {
                     qualitySelector.appendChild(option);
                 });
 
-                if (savedQuality !== null) {
-                    qualitySelector.value = parseInt(savedQuality);
-                    hls.currentLevel = parseInt(savedQuality); 
-                } else {
-                    qualitySelector.value = "-1";
-                    hls.currentLevel = -1;
-                    localStorage.setItem('hlsQuality', '-1');
+                let startingQuality = -1;
+
+                if (State.targetQuality !== undefined && State.targetQuality !== -1) {
+                    startingQuality = State.targetQuality;
                 }
+
+                qualitySelector.value = startingQuality;
+                hls.currentLevel = startingQuality;
+                hls.nextLoadLevel = startingQuality;
 
                 qualitySelector.addEventListener('change', (e) => {
                     const newLevel = parseInt(e.target.value);
+
                     hls.currentLevel = newLevel;
-                    hls.loadLevel = newLevel;   
+                    hls.nextLoadLevel = newLevel;
+                    qualitySelector.value = newLevel
                     
-                    localStorage.setItem('hlsQuality', newLevel);
+                    if (State.sync_perm) {
+                        emitQualityChange(newLevel);
+                    }
                 });
             });
 
@@ -430,12 +442,6 @@ export async function setupVideo(filename, startOffset = -1) {
                     switch (data.type) {
                         case Hls.ErrorTypes.NETWORK_ERROR:
                             console.warn("Network error. Retrying...", data);
-                            
-                            const savedQuality = localStorage.getItem('hlsQuality');
-                            if (savedQuality !== null && savedQuality !== "-1") {
-                                hls.loadLevel = parseInt(savedQuality); 
-                            }
-                            
                             setTimeout(() => hls.startLoad(), 2000);
                             break;
                         case Hls.ErrorTypes.MEDIA_ERROR:
@@ -533,6 +539,18 @@ export function executeSync(data) {
 
 export function getVideoData(){
     return {currentTime: video.currentTime, paused: video.paused };
+}
+
+export function changeQuality(levelIndex){
+    if (hls) {
+        hls.currentLevel = levelIndex;
+        hls.nextLoadLevel = levelIndex; 
+
+        const qualitySelector = document.getElementById('quality-selector');
+        if (qualitySelector) {
+            qualitySelector.value = levelIndex;
+        }
+    }
 }
 
 function resetIdleTimer() {
