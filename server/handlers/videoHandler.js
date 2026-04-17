@@ -50,17 +50,27 @@ module.exports = function(io, socket) {
         io.to(socket.data.currentRoomId).emit('apply-sync', data);
     });
 
+    socket.on('host-quality-change', (levelIndex) => {
+        if (!socket.data.currentRoomId || !activeRooms[socket.data.currentRoomId]) return;
+
+        const userRole = activeRooms[socket.data.currentRoomId].users[socket.id].role;
+        if (userRole === 'host' || userRole === 'admin') {
+            activeRooms[socket.data.currentRoomId].videoQuality = levelIndex;
+            socket.to(socket.data.currentRoomId).emit('apply-quality', levelIndex);
+        }
+    });
+
     // buffering logic
     socket.on('client-buffering', () => {
         if (socket.data.currentRoomId && activeRooms[socket.data.currentRoomId]) {
             activeRooms[socket.data.currentRoomId].bufferingUsers.add(socket.id);
-            //console.log(`Room ${socket.data.currentRoomId}: User ${socket.id} is buffering. Pausing room.`);
             if (activeRooms[socket.data.currentRoomId].status !== 'pause') {
                 activeRooms[socket.data.currentRoomId].status = 'buffer';
                 io.to(socket.data.currentRoomId).emit('apply-sync', {
                     type: activeRooms[socket.data.currentRoomId].status,
                     time: activeRooms[socket.data.currentRoomId].currentTime
                 });
+                io.to(socket.data.currentRoomId).emit('bufferingList', [...activeRooms[socket.data.currentRoomId].bufferingUsers]);
             }
         }
     });
@@ -68,13 +78,15 @@ module.exports = function(io, socket) {
     socket.on('client-recovered', () => {
         if (socket.data.currentRoomId && activeRooms[socket.data.currentRoomId]) {
             activeRooms[socket.data.currentRoomId].bufferingUsers.delete(socket.id);
-            //console.log(`Room ${socket.data.currentRoomId}: User ${socket.id} recovered. Resuming room.`);
-            if (activeRooms[socket.data.currentRoomId].bufferingUsers.size === 0 && activeRooms[socket.data.currentRoomId].status !== 'pause') {
-                activeRooms[socket.data.currentRoomId].status = 'play';
-                io.to(socket.data.currentRoomId).emit('apply-sync', {
-                    type: activeRooms[socket.data.currentRoomId].status,
-                    time: activeRooms[socket.data.currentRoomId].currentTime
-                });
+            if(activeRooms[socket.data.currentRoomId].status !== 'pause'){
+                if (activeRooms[socket.data.currentRoomId].bufferingUsers.size === 0) {
+                    activeRooms[socket.data.currentRoomId].status = 'play';
+                    io.to(socket.data.currentRoomId).emit('apply-sync', {
+                        type: activeRooms[socket.data.currentRoomId].status,
+                        time: activeRooms[socket.data.currentRoomId].currentTime
+                    });
+                }
+                io.to(socket.data.currentRoomId).emit('bufferingList', [...activeRooms[socket.data.currentRoomId].bufferingUsers]);
             }
         }
     });

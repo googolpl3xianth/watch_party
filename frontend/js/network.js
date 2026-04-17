@@ -1,6 +1,6 @@
 // js/network.js
 import { State } from './state.js';
-import { setupVideo, executeSync, getVideoData, reloadVideo } from './video.js';
+import { setupVideo, executeSync, getVideoData, reloadVideo, changeQuality } from './video.js';
 import { showRoom, showGate, hideRoomStatus, showPermOnly, setVideoSelect, updateUserCount, updateUserList, removeUser, getSelectedVideo, setupLobbyUI, changeRoomStatus} from './ui.js';
 
 export const socket = io({secure: true, transports: ['websocket'] });
@@ -16,7 +16,10 @@ export function initializeNetwork(){
         window.location.search = `?room=${newId}`;
     });
 
-    socket.on('join-success', (permission) => {
+    socket.on('join-success', (data) => {
+        let permission = data.role;
+        State.targetQuality = data.quality;
+
         document.documentElement.classList.remove('direct-join');
         showRoom();
         socket.emit('update-video-list');
@@ -88,6 +91,7 @@ function setupSocketUI(){
 }
 
 function setupSocketLogic() {
+    let localBufferingList = new Set();
     if (logicInitialized) {
         // Update the internal permission variable if your logic uses one
         return; 
@@ -158,6 +162,25 @@ function setupSocketLogic() {
         }
     });
 
+    socket.on('apply-quality', (levelIndex) => {
+        changeQuality(levelIndex);
+    });
+
+    socket.on('bufferingList', (bufferingList) => {
+        bufferingList = new Set(bufferingList);
+    
+        let removed = localBufferingList.difference(bufferingList);
+        let added = bufferingList.difference(localBufferingList);
+        localBufferingList = bufferingList;
+
+        for(const id of removed){
+            updateUserList(id, null, null, false);
+        }
+        for(const id of added){
+            updateUserList(id, null, null, true)
+        }
+    });
+
     socket.on('apply-sync', (data) => {
         executeSync(data);
     });
@@ -200,6 +223,11 @@ export function sync(){
 export function emitSync(type, time){
     if (!State.sync_perm) return;
     socket.emit('sync-event', { type, time });
+}
+
+export function emitQualityChange(qualityLevel){
+    if (!State.sync_perm) return;
+    socket.emit('host-quality-change', qualityLevel)
 }
 
 // Buffer logic
