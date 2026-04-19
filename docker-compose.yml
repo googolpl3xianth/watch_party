@@ -43,7 +43,7 @@ services:
     restart: unless-stopped
   p2p-tracker:
     build: 
-      context: .
+      context: ./tracker
       dockerfile: Dockerfile.tracker
     restart: unless-stopped
 #  cloudflare-tunnel: # For mobile server spin up

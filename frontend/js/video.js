@@ -22,7 +22,7 @@ const hlsConfig = {
     fragLoadingRetryDelay: 1000,
 }
 const p2pmlConfig = {
-    P2P_THRESHOLD: 100,
+    P2P_THRESHOLD: 3,
     forwardSegmentCount: 20, 
     maxHistoryChunks: 15,
     pieceBytesDownloadedCheckInterval: 1000,
@@ -353,7 +353,8 @@ export async function setupVideo(filename, startOffset = -1) {
                 p2pEngine = new p2pml.hlsjs.Engine({
                     segments: {
                         forwardSegmentCount: p2pmlConfig.forwardSegmentCount, 
-                        maxHistoryChunks: p2pmlConfig.maxHistoryChunks     
+                        maxHistoryChunks: p2pmlConfig.maxHistoryChunks,
+                        swarmId: videoUrl, 
                     },
                     loader: {
                         trackerAnnounce: [dynamicTrackerUrl],
@@ -362,7 +363,13 @@ export async function setupVideo(filename, startOffset = -1) {
                     p2p: {
                         pieceBytesDownloadedCheckInterval: p2pmlConfig.pieceBytesDownloadedCheckInterval,
                         peerPieceDownloadMaxDefault: p2pmlConfig.peerPieceDownloadMaxDefault,
-                        useBframes: false  
+                        useBframes: false,
+                        rtcConfig: {
+                            iceServers: [
+                                { urls: 'stun:stun.l.google.com:19302' },
+                                { urls: 'stun:global.stun.twilio.com:3478' }
+                            ]
+                        }
                     }
                 });
                 hlsConfig.loader = p2pEngine.createLoaderClass();
