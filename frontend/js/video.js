@@ -22,13 +22,6 @@ const hlsConfig = {
     fragLoadingMaxRetry: 2, 
     fragLoadingRetryDelay: 1000,
 }
-const p2pmlConfig = {
-    P2P_THRESHOLD: 2,
-    forwardSegmentCount: 20, 
-    maxHistoryChunks: 15,
-    pieceBytesDownloadedCheckInterval: 1000,
-    peerPieceDownloadMaxDefault: 3000,
-}
 const CONFIG = {
     SYNC_THRESHOLD_SECONDS: 1.5,
     LOCK_TIMEOUT_MS: 300,
@@ -343,7 +336,7 @@ export async function setupVideo(filename, startOffset = -1) {
             const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
             const dynamicTrackerUrl = `${wsProtocol}//${currentHost}/tracker/`;
 
-            if (currentUserCount >= p2pmlConfig.P2P_THRESHOLD) {
+            if (currentUserCount >= State.p2pThreshold) {
                 const HlsWithP2P = HlsJsP2PEngine.injectMixin(Hls);
 
                 hls = new HlsWithP2P({
@@ -405,11 +398,11 @@ export async function setupVideo(filename, startOffset = -1) {
 
                 if (State.targetQuality !== undefined && State.targetQuality !== -1) {
                     startingQuality = State.targetQuality;
+                    hls.currentLevel = startingQuality;
+                    hls.nextLoadLevel = startingQuality;
                 }
 
                 qualitySelector.value = startingQuality;
-                hls.currentLevel = startingQuality;
-                hls.nextLoadLevel = startingQuality;
 
                 qualitySelector.addEventListener('change', (e) => {
                     const newLevel = parseInt(e.target.value);

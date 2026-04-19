@@ -2,6 +2,8 @@ const { activeRooms, creationSpamFilter, roomSpamTimer } = require('../store');
 const { getVideoList, sanitize, checkFileSubtitles, deleteRoomVideo } = require('../utils');
 require('dotenv').config(); 
 
+const SWARM_THRESHOLD = 3;
+
 module.exports = function(io, socket) {
 
     socket.on('update-video-list', () =>{
@@ -55,7 +57,7 @@ module.exports = function(io, socket) {
             socket.data.currentRoomId = roomId;
 
             if (activeRooms[roomId].videoQuality === undefined) {
-                activeRooms[roomId].videoQuality = -1; // Default to Auto
+                activeRooms[roomId].videoQuality = 0;
             }
 
             let role = 'guest';
@@ -75,12 +77,13 @@ module.exports = function(io, socket) {
             //console.log(`Roomid: ${socket.data.currentRoomId} User Joined: ${socket.id}`);
             socket.emit('join-success', {
                         role: users[socket.id].role,
-                        quality: activeRooms[roomId].videoQuality});
+                        quality: activeRooms[roomId].videoQuality,
+                        p2pThreshold: SWARM_THRESHOLD});
             io.to(roomId).emit('update-user-list', activeRooms[socket.data.currentRoomId].users);
 
             const currentRoomUsers = Object.keys(activeRooms[roomId].users).length;
                 
-            if (currentRoomUsers === 4) {
+            if (currentRoomUsers === SWARM_THRESHOLD) {
                 io.to(roomId).emit('upgrade-to-swarm');
             }
         } else {
