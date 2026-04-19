@@ -1,5 +1,6 @@
 // js/video.js
 import Hls from 'hls.js';
+import { HlsJsP2PEngine } from "p2p-media-loader-hlsjs";
 window.Hls = Hls;
 import { State } from './state.js';
 import { emitSync, sync, checkSubtitles, clientBuffering, clientRecovered, emitQualityChange } from './network.js';
@@ -22,7 +23,7 @@ const hlsConfig = {
     fragLoadingRetryDelay: 1000,
 }
 const p2pmlConfig = {
-    P2P_THRESHOLD: 3,
+    P2P_THRESHOLD: 2,
     forwardSegmentCount: 20, 
     maxHistoryChunks: 15,
     pieceBytesDownloadedCheckInterval: 1000,
@@ -332,55 +333,51 @@ export async function setupVideo(filename, startOffset = -1) {
             if (startOffset > -1) {
                 hlsConfig.startPosition = startOffset;
             } else {
-                delete hlsConfig.startPosition; // Clean up for normal loads
+                delete hlsConfig.startPosition;
             }
 
             delete hlsConfig.startLevel;
 
             const currentUserCount = Object.keys(State.usersArray || {}).length;
-
-            let p2pEngine = null;
-            const p2pmlGlobal = window.p2pml;
-
             const currentHost = window.location.host;
             const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            
             const dynamicTrackerUrl = `${wsProtocol}//${currentHost}/tracker/`;
 
-            if (currentUserCount >= p2pmlConfig.P2P_THRESHOLD && p2pmlGlobal && p2pmlGlobal.hlsjs && p2pmlGlobal.hlsjs.Engine.isSupported()) {
-                //console.log(`[NETWORK] Room size is ${currentUserCount}. Activating P2P Swarm to save server bandwidth...`);
-                
-                p2pEngine = new p2pml.hlsjs.Engine({
-                    segments: {
-                        forwardSegmentCount: p2pmlConfig.forwardSegmentCount, 
-                        maxHistoryChunks: p2pmlConfig.maxHistoryChunks,
-                        swarmId: videoUrl, 
-                    },
-                    loader: {
-                        trackerAnnounce: [dynamicTrackerUrl],
-                        httpUseRanges: false
-                    },
+            if (currentUserCount >= p2pmlConfig.P2P_THRESHOLD) {
+                const HlsWithP2P = HlsJsP2PEngine.injectMixin(Hls);
+
+                hls = new HlsWithP2P({
+                    ...hlsConfig, 
                     p2p: {
-                        pieceBytesDownloadedCheckInterval: p2pmlConfig.pieceBytesDownloadedCheckInterval,
-                        peerPieceDownloadMaxDefault: p2pmlConfig.peerPieceDownloadMaxDefault,
-                        useBframes: false,
-                        rtcConfig: {
-                            iceServers: [
-                                { urls: 'stun:stun.l.google.com:19302' },
-                                { urls: 'stun:global.stun.twilio.com:3478' }
-                            ]
+                        core: {
+                            swarmId: videoUrl, 
+                            announceTrackers: [dynamicTrackerUrl],
+                            rtcConfig: {
+                                iceServers: [
+                                    { urls: 'stun:stun.l.google.com:19302' },
+                                    { urls: 'stun:global.stun.twilio.com:3478' }
+                                ]
+                            }
                         }
                     }
                 });
-                hlsConfig.loader = p2pEngine.createLoaderClass();
-            } else {
-                //console.log(`[NETWORK] Room size is ${currentUserCount}. Using ultra-stable direct Server connection.`);
-                delete hlsConfig.loader; 
+
+                /*hls.p2pEngine.addEventListener("onPeerConnect", (params) => {
+                    console.log("%c[P2P SWARM] 🟢 PEER CONNECTED! ID:", "color: lime; font-weight: bold;", params.peerId);
+                });*/
+
+                /*hls.p2pEngine.addEventListener("onChunkDownloaded", (bytes, method) => {
+                    if (method === 'p2p') {
+                        console.log("%c[P2P SWARM] 🚀 DOWNLOADED FROM PEERS!", "color: cyan; font-weight: bold;");
+                    } else {
+                        console.log("%c[FALLBACK] 🐌 Downloaded from Server.", "color: gray;");
+                    }
+                });*/
+            }
+            else{
+                hls = new Hls(hlsConfig);
             }
 
-            hls = new Hls(hlsConfig);
-            if (p2pEngine) p2pml.hlsjs.initHlsJsPlayer(hls);
-            
             const cacheBustedUrl = `${videoUrl}?t=${Date.now()}`;
             hls.loadSource(cacheBustedUrl);
             hls.attachMedia(video);
@@ -710,7 +707,7 @@ export function formatTime(seconds) {
 }
 
 export function reloadVideo(){
-    if (hlsConfig.loader) return; 
+    if (hls && hls.p2pEngine) return;
 
     //console.log("[NETWORK] Swarm threshold reached! Hot-swapping to P2P Engine...");
     
