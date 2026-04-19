@@ -2,10 +2,10 @@ FROM node:18-alpine
 
 WORKDIR /usr/src/app
 
-RUN npm install bittorrent-tracker@9.1.7
+RUN npm install bittorrent-tracker@9.17.0
 
 COPY tracker.js .
 
 EXPOSE 8000
 
-CMD ["node", "server.js"]
+CMD ["node", "tracker.js"]

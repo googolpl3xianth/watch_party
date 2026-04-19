@@ -23,7 +23,7 @@ const hlsConfig = {
     fragLoadingRetryDelay: 1000,
 }
 const p2pmlConfig = {
-    P2P_THRESHOLD: 3,
+    P2P_THRESHOLD: 2,
     forwardSegmentCount: 20, 
     maxHistoryChunks: 15,
     pieceBytesDownloadedCheckInterval: 1000,
@@ -362,17 +362,17 @@ export async function setupVideo(filename, startOffset = -1) {
                     }
                 });
 
-                hls.p2pEngine.addEventListener("onPeerConnect", (params) => {
+                /*hls.p2pEngine.addEventListener("onPeerConnect", (params) => {
                     console.log("%c[P2P SWARM] 🟢 PEER CONNECTED! ID:", "color: lime; font-weight: bold;", params.peerId);
-                });
+                });*/
 
-                hls.p2pEngine.addEventListener("onChunkDownloaded", (bytes, method) => {
+                /*hls.p2pEngine.addEventListener("onChunkDownloaded", (bytes, method) => {
                     if (method === 'p2p') {
                         console.log("%c[P2P SWARM] 🚀 DOWNLOADED FROM PEERS!", "color: cyan; font-weight: bold;");
                     } else {
                         console.log("%c[FALLBACK] 🐌 Downloaded from Server.", "color: gray;");
                     }
-                });
+                });*/
             }
             else{
                 hls = new Hls(hlsConfig);
