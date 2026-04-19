@@ -19,6 +19,7 @@ export function initializeNetwork(){
     socket.on('join-success', (data) => {
         let permission = data.role;
         State.targetQuality = data.quality;
+        State.p2pThreshold = data.p2pThreshold;
 
         document.documentElement.classList.remove('direct-join');
         showRoom();

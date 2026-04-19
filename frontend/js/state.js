@@ -9,4 +9,6 @@ export const State = {
     hasJoined: false,
     currentVideoFilename: "",
     usersArray: [],
+    targetQuality: 0,
+    p2pThreshold: Number.MAX_SAFE_INTEGER,
 };
