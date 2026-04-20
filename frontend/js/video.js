@@ -6,7 +6,7 @@ import { State } from './state.js';
 import { emitSync, sync, checkSubtitles, clientBuffering, clientRecovered, emitQualityChange } from './network.js';
 
 const hlsConfig = {
-    startLevel: -1,
+    startLevel: 0,
     capLevelToPlayerSize: true,
     maxBufferLength: 30, 
     maxMaxBufferLength: 60,
@@ -394,7 +394,7 @@ export async function setupVideo(filename, startOffset = -1) {
                     qualitySelector.appendChild(option);
                 });
 
-                let startingQuality = -1;
+                let startingQuality = 0;
 
                 if (State.targetQuality !== undefined && State.targetQuality !== -1) {
                     startingQuality = State.targetQuality;

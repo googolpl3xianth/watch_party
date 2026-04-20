@@ -9,6 +9,8 @@ require('dotenv').config();
 
 const app = express();
 
+const maxSize = 5 * 1024 * 1024 * 1024
+
 const UNCOMPRESSED_DIR = '/uncompressed';
 const COMPRESSED_DIR = '/compressed';
 
@@ -16,6 +18,7 @@ const tusServer = new Server({
     path: '/upload',
     datastore: new FileStore({ directory: UNCOMPRESSED_DIR }),
     relativeLocation: true,
+    maxSize: maxSize,
     allowedOrigins: ['https://watch-party-project.duckdns.org'],
     allowedHeaders: [
         'Origin', 'X-Requested-With', 'Content-Type', 'Accept', 
@@ -95,6 +98,10 @@ tusServer.on(EVENTS.POST_FINISH, (req, res, upload) => {
     localSocket.on('connect_error', (err) => {
         console.error("[ERROR] Worker could not reach main Socket server:", err.message);
     });
+});
+
+app.get('/upload/health', (req, res) => {
+    res.status(200).send('Worker is online and ready.');
 });
 
 app.post(/^\/upload($|\/.*)/, (req, res, next) => {

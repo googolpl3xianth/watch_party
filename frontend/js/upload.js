@@ -12,54 +12,79 @@ const httpProtocol = window.location.protocol;
 const dynamicUploadUrl = `${httpProtocol}//${currentHost}/upload/`;
 
 document.addEventListener('DOMContentLoaded', () => {
-    let isUploading = false;
-    const uppy = new Uppy({
-        meta: { roomId: roomId },
-        onBeforeFileAdded: (currentFile, files) => {
-            return {
-                ...currentFile,
-                id: `${currentFile.id}-${roomId}`
-            };
-        }
-    })
-    .use(Dashboard, { 
-        inline: false, 
-        trigger: '#open-upload-modal-btn',
-        closeModalOnClickOutside: true,
-        proudlyDisplayPoweredByUppy: false,
-        theme: 'dark'
-    })
-    .use(Tus, { 
-        endpoint: dynamicUploadUrl, 
-        chunkSize: chunkSize,
-    });
+    const uploadBtn = document.getElementById('open-upload-modal-btn');
+    
+    uploadBtn.disabled = true;
+    const originalText = uploadBtn.innerText;
+    uploadBtn.innerText = "Checking uploader status...";
+    uploadBtn.style.opacity = "0.5";
 
-    uppy.on('upload', () => {
-        isUploading = true;
-        changeRoomStatus("Host is uploading a video...");
-    });
+    fetch(`${httpProtocol}//${currentHost}/upload/health`)
+        .then(response => {
+            if (response.ok) {
+                uploadBtn.disabled = false;
+                uploadBtn.innerText = originalText;
+                uploadBtn.style.opacity = "1";
+                initializeUppy(); 
+            } else {
+                throw new Error("Worker responded, but is unhealthy.");
+            }
+        })
+        .catch(error => {
+            uploadBtn.innerText = "Uploader Currently Offline";
+            console.warn("[NETWORK] Upload worker is down:", error);
+        });
 
-    uppy.on('progress', (progress) => {
-        if (!isUploading) return;
-        changeRoomStatus(`Uploading to server... ${progress}%`);
-    });
+    function initializeUppy() {
+        let isUploading = false;
+        const uppy = new Uppy({
+            meta: { roomId: roomId },
+            onBeforeFileAdded: (currentFile, files) => {
+                return {
+                    ...currentFile,
+                    id: `${currentFile.id}-${roomId}`
+                };
+            }
+        })
+        .use(Dashboard, { 
+            inline: false, 
+            trigger: '#open-upload-modal-btn',
+            closeModalOnClickOutside: true,
+            proudlyDisplayPoweredByUppy: false,
+            theme: 'dark'
+        })
+        .use(Tus, { 
+            endpoint: dynamicUploadUrl, 
+            chunkSize: chunkSize,
+        });
 
-    uppy.on('cancel-all', () => {
-        if (!isUploading) return; 
-        
-        isUploading = false;
-        changeRoomStatus("Waiting on Host to load video");
-    });
+        uppy.on('upload', () => {
+            isUploading = true;
+            changeRoomStatus("Host is uploading a video...");
+        });
 
-    uppy.on('complete', (result) => {
-        isUploading = false;
+        uppy.on('progress', (progress) => {
+            if (!isUploading) return;
+            changeRoomStatus(`Uploading to server... ${progress}%`);
+        });
 
-        const dashboard = uppy.getPlugin('Dashboard');
-        if (dashboard) {
-            if (document.activeElement) document.activeElement.blur();
-            dashboard.closeModal();
-        }
-        
-        setTimeout(() => uppy.cancelAll(), 1000);
-    });
+        uppy.on('cancel-all', () => {
+            if (!isUploading) return; 
+            
+            isUploading = false;
+            changeRoomStatus("Waiting on Host to load video");
+        });
+
+        uppy.on('complete', (result) => {
+            isUploading = false;
+
+            const dashboard = uppy.getPlugin('Dashboard');
+            if (dashboard) {
+                if (document.activeElement) document.activeElement.blur();
+                dashboard.closeModal();
+            }
+            
+            setTimeout(() => uppy.cancelAll(), 1000);
+        });
+    }
 });
