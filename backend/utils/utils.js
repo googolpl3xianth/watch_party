@@ -1,7 +1,7 @@
 const fs = require('fs');
 const fsPromises = fs.promises;
 const path = require('path');
-const db = require('./db/queries');
+const db = require('../db/queries');
 
 async function initializeVideoList(dir = '/media/compressed', baseDir = '/media/compressed'){
     try {
