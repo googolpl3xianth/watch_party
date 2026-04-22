@@ -1,29 +1,22 @@
 const { activeRooms, creationSpamFilter, roomSpamTimer } = require('../store');
-const { getVideoList, sanitize, checkFileSubtitles, deleteRoomVideo } = require('../utils');
+const { sanitize, checkFileSubtitles, deleteRoomVideo } = require('../utils');
+const db = require('../db/queries');
 require('dotenv').config(); 
 
 const SWARM_THRESHOLD = 3;
 
 module.exports = function(io, socket) {
 
-    socket.on('update-video-list', () =>{
+    socket.on('update-video-list', async () =>{
         if (socket.data.currentRoomId) {
             const currentRoom = socket.data.currentRoomId;
         
-            getVideoList('/media/compressed').then(list => {
-                const filteredList = list.filter(item => {
-                    const parts = item.split('/');
-                    const topFolder = parts[0];
-
-                    if (topFolder === currentRoom) return true;
-                    
-                    if (topFolder.length === 6) return false; 
-                    
-                    return true; 
-                });
-
-                socket.emit('video-list', filteredList);
-            });
+            try {
+                let list = await db.getVideoList(currentRoom); 
+                socket.emit('video-list', list);
+            } catch (err) {
+                console.error("Failed to fetch video list:", err);
+            }
         }
     });
 
@@ -45,7 +38,9 @@ module.exports = function(io, socket) {
                               host: null, 
                               users: {}, 
                               bufferingUsers: new Set(),
-                              videoQuality: -1,};
+                              videoQuality: -2,};
+
+        db.createRoom(newID, socket.id).catch(console.error);
 
         //console.log(`Room created: ${newID} by host: ${socket.id}`);
         socket.emit('room-created', newID);
@@ -57,7 +52,7 @@ module.exports = function(io, socket) {
             socket.data.currentRoomId = roomId;
 
             if (activeRooms[roomId].videoQuality === undefined) {
-                activeRooms[roomId].videoQuality = 0;
+                activeRooms[roomId].videoQuality = -2;
             }
 
             let role = 'guest';
@@ -117,10 +112,23 @@ module.exports = function(io, socket) {
         }
     });
 
-    socket.on('worker-transcode-ready', (data) => {
+    socket.on('worker-transcode-progress', (data) => {
         if (data.secret !== `${process.env.UPLOAD_KEY}`) return;
         
-        if (data.roomId && data.finalPath) {
+        if (data.roomId && data.progress !== undefined) {
+            io.to(data.roomId).emit('transcode-progress', data.progress);
+        }
+    });
+
+    socket.on('worker-transcode-ready', async (data) => {
+        if (data.secret !== `${process.env.UPLOAD_KEY}`) {console.error("🚨 Unauthorized worker tried to update DB!"); return;}
+
+        if (data.roomId && data.videoName && data.finalPath) {
+            try {
+                await db.saveVideo(data.roomId, data.videoName, data.finalPath);
+            } catch (dbErr) {
+                console.warn(`[WARNING] Failed to insert ${file.name} into DB:`, dbErr.message);
+            }
             io.to(data.roomId).emit('transcode-ready', data.finalPath);
 
             if (activeRooms[data.roomId]) {
@@ -128,17 +136,12 @@ module.exports = function(io, socket) {
                 io.to(data.roomId).emit('load-new-video', data.finalPath);
             }
 
-            getVideoList('/media/compressed').then(list => {
-                const filteredList = list.filter(item => {
-                    const parts = item.split('/');
-                    const topFolder = parts[0];
-
-                    if (topFolder === data.roomId) return true;
-                    if (topFolder.length === 6) return false; 
-                    return true; 
-                });
-                io.to(data.roomId).emit('video-list', filteredList);
-            }).catch(err => console.error("Failed to update list:", err));
+            try {
+                let list = await db.getVideoList(data.roomId); 
+                io.to(data.roomId).emit('video-list', list);
+            } catch (err) {
+                console.error("Failed to fetch video list:", err);
+            }
         }
     });
 

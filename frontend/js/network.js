@@ -116,37 +116,20 @@ function setupSocketLogic() {
         setupVideo(filename);
     });
 
-    socket.on('transcode-start', (fileSizeBytes) => {
-        const fileSizeMB = fileSizeBytes / (1024 * 1024);
-        const estimatedSeconds = Math.max(15, Math.floor(fileSizeMB / 15)); 
-        let progress = 0;
-        let estimatedSecondsProgress = estimatedSeconds;
+    socket.on('transcode-start', () => {
+        changeRoomStatus(`Analyzing video formatting...`);
+    });
 
-        changeRoomStatus(`Transcoding... 0% (Est. time: ${estimatedSeconds}s)`);
-
-        if (fakeProgressBar) clearInterval(fakeProgressBar);
-        
-        fakeProgressBar = setInterval(() => {
-            progress += (100 / estimatedSeconds);
-            estimatedSecondsProgress -= 1;
-            
-            if (progress > 99) {
-                progress = 99;
-                changeRoomStatus(`Finalizing video formats... 99%`);
-            } else {
-                changeRoomStatus(`Transcoding... ${Math.floor(progress)}% (Est. time: ${estimatedSecondsProgress}s)`);
-            }
-        }, 1000);
+    socket.on('transcode-progress', (percentage) => {
+        if (percentage >= 100) {
+            changeRoomStatus(`Generating thumbnails and finalizing...`);
+        } else {
+            changeRoomStatus(`Transcoding... ${percentage}%`);
+        }
     });
 
     socket.on('transcode-ready', (finalPath) => {
-        if (fakeProgressBar) {
-            clearInterval(fakeProgressBar);
-            fakeProgressBar = null;
-        }
-        
         changeRoomStatus(`Transcoding Complete! Loading...`);
-        
         setTimeout(() => {
             hideRoomStatus();
         }, 1000); 

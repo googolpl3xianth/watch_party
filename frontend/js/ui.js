@@ -2,6 +2,7 @@
 import { State } from './state.js';
 import { socket, createRoom, requestChange, updateUser} from './network.js'
 import { joinVideo } from './video.js'
+import { pingWorker } from './upload.js'
 
 const roomCodeInput = document.getElementById('room-code-input');
 const lobbyDiv = document.getElementById('lobby');
@@ -16,6 +17,7 @@ const roomStatus = document.getElementById('room-status');
 const joinGate = document.getElementById('join-gate');
 const joinBtn = document.getElementById('join-btn');
 const uploadArea = document.getElementById('upload-area');
+const uploadBtn = document.getElementById('open-upload-modal-btn')
 
 export function setupLobbyUI(){
     document.getElementById('page-loader').style.display = 'none';
@@ -41,7 +43,7 @@ export function setupRoomUI() {
     document.getElementById('edit-name-btn').addEventListener('click', rename);
     document.getElementById('home-btn').addEventListener('click', goHome);
     document.getElementById('load-video-btn').addEventListener('click', () => requestChange());
-    document.getElementById('open-upload-modal-btn').addEventListener('click', openUpload);
+    uploadBtn.addEventListener('click', openUpload);
 
     userCountBtn.addEventListener('click', getUserList);
     document.getElementById('change-role-btn').addEventListener('click', (event) => {getRoleList(event)});
@@ -122,13 +124,61 @@ export function showRoom(){
 }
 
 export function setVideoSelect(files){
-    videoSelect.innerHTML = '<option value="">-- Select a Video --</option>'; // Reset
+    videoSelect.innerHTML = '<option value="">-- Select a Video --</option>';
+
+    const groupedVideos = {};
+    const uncategorizedVideos = [];
+
+    const uniqueFiles = [...new Set(files)];
+
     files.forEach(file => {
-        const option = document.createElement('option');
-        option.value = file;
-        option.textContent = file;
-        videoSelect.appendChild(option);
+        const parts = file.split('/');
+        
+        if (parts.length >= 3) {
+            const seriesName = parts[0]; 
+
+            let displayName = parts.slice(1).join(' / ');
+            displayName = displayName.replace('/master.m3u8', '').replace('master.m3u8', 'Video File');
+            
+            if (!groupedVideos[seriesName]) {
+                groupedVideos[seriesName] = [];
+            }
+            groupedVideos[seriesName].push({ path: file, name: displayName });
+        } else {
+            uncategorizedVideos.push({ path: file, name: file });
+        }
     });
+
+    const sortedSeriesNames = Object.keys(groupedVideos).sort((a, b) => a.localeCompare(b));
+
+    for (const series of sortedSeriesNames) {
+        const optgroup = document.createElement('optgroup');
+        optgroup.label = series;
+
+        const videos = groupedVideos[series].sort((a, b) => a.name.localeCompare(b.name));
+
+        videos.forEach(video => {
+            const option = document.createElement('option');
+            option.value = video.path;
+            option.textContent = video.name;
+            optgroup.appendChild(option);
+        });
+
+        videoSelect.appendChild(optgroup);
+    }
+
+    if (uncategorizedVideos.length > 0) {
+        const optgroup = document.createElement('optgroup');
+        optgroup.label = "Other Uploads";
+        
+        uncategorizedVideos.sort((a, b) => a.name.localeCompare(b.name)).forEach(video => {
+            const option = document.createElement('option');
+            option.value = video.path;
+            option.textContent = video.name;
+            optgroup.appendChild(option);
+        });
+        videoSelect.appendChild(optgroup);
+    }
 }
 
 export function getSelectedVideo(){
@@ -297,7 +347,13 @@ function getRoomLink(){
 }
 
 function openUpload(){
-    uploadArea.style.display = "default";
+    if(pingWorker()){
+        uploadBtn.style.opacity = "1";
+        uploadArea.style.display = "default";
+    }
+    else{
+        uploadBtn.style.opacity = "0.5";
+    }
 }
 
 function rename(){

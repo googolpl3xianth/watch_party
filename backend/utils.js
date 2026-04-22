@@ -1,8 +1,9 @@
 const fs = require('fs');
 const fsPromises = fs.promises;
 const path = require('path');
+const db = require('./db/queries');
 
-async function getVideoList(dir = '/media/compressed', baseDir = '/media/compressed') {
+async function initializeVideoList(dir = '/media/compressed', baseDir = '/media/compressed'){
     try {
         const files = await fsPromises.readdir(dir, { withFileTypes: true });
 
@@ -13,23 +14,29 @@ async function getVideoList(dir = '/media/compressed', baseDir = '/media/compres
                 const subFiles = await fsPromises.readdir(fullPath).catch(() => []);
                 
                 if (subFiles.includes('master.m3u8')) {
-                    return path.relative(baseDir, path.join(fullPath, 'master.m3u8')).replace(/\\/g, '/');
+                    const relativePath = path.relative(baseDir, path.join(fullPath, 'master.m3u8')).replace(/\\/g, '/');
+                    const topFolder = path.relative(baseDir, fullPath).split(path.sep)[0];
+                    if(topFolder.length !== 6){
+                        try {
+                            await db.saveVideo(null, file.name, relativePath);
+                        } catch (dbErr) {
+                            console.warn(`[WARNING] Failed to insert ${file.name} into DB:`, dbErr.message);
+                        }
+                    }
+                    return null;
                 } else {
-                    return await getVideoList(fullPath, baseDir);
+                    return await initializeVideoList(fullPath, baseDir);
                 }
-            } else if (file.name === 'master.m3u8') {
-                return path.relative(baseDir, fullPath).replace(/\\/g, '/');
             }
+            
             return null;
         });
 
-        const results = await Promise.all(tasks);
-        
-        return results.flat().filter(Boolean);
-        
+        await Promise.all(tasks);
+        return null;
     } catch (err) {
         console.error("Optimized search error:", err);
-        return [];
+        return null;
     }
 }
 
@@ -49,10 +56,13 @@ function deleteRoomVideo(roomId) {
             });
         }
     });
+    db.deleteRoom(safeRoomId);
 }
 
-function runStartupCleanup() {
+async function runStartupCleanup() {
     //console.log("[SYSTEM] Running boot-time cleanup...");
+
+    await db.cleanupRooms();
 
     const uncompressedDir = '/media/uncompressed';
     if (fs.existsSync(uncompressedDir)) {
@@ -62,13 +72,16 @@ function runStartupCleanup() {
         //console.log(" -> Cleared /uncompressed");
     }
 
-    // 2. Wipe orphaned Room folders (assuming 6-character alphanumeric IDs)
     const compressedDir = '/media/compressed';
     if (fs.existsSync(compressedDir)) {
         fs.readdirSync(compressedDir).forEach(folder => {
             if (/^[a-z0-9]{6}$/.test(folder)) {
-                fs.rmSync(path.join(compressedDir, folder), { recursive: true, force: true });
-                //console.log(` -> Removed orphaned room: ${folder}`);
+                try {
+                    fs.rmSync(path.join(compressedDir, folder), { recursive: true, force: true });
+                    //console.log(` -> Removed orphaned room: ${folder}`);
+                } catch (err) {
+                    console.warn(`[WARNING] Could not delete orphaned room ${folder}. Permission denied.`);
+                }
             }
         });
     }
@@ -94,9 +107,9 @@ function sanitize(str) {
 }
 
 module.exports = {
-    getVideoList,
     checkFileSubtitles,
     sanitize,
     deleteRoomVideo,
-    runStartupCleanup
+    runStartupCleanup,
+    initializeVideoList
 };

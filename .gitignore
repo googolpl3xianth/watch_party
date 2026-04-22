@@ -7,11 +7,10 @@ libs
 
 # NGINX / Certs
 auth
-data/
 letsencrypt/
 
 # Application Data & Media
-media/
+data/
 
 # Vite
 dist

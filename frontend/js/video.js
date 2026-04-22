@@ -378,6 +378,11 @@ export async function setupVideo(filename, startOffset = -1) {
             hls.on(Hls.Events.MANIFEST_PARSED, function() {
                 const qualitySelector = document.getElementById('quality-selector');
 
+                if (hls.levels.length <= 1) {
+                    qualitySelector.style.display = 'none';
+                    return; 
+                }
+
                 qualitySelector.style.display = 'inline-block';
                 qualitySelector.innerHTML = '<option value="-1" style="color: black;">Auto</option>'; 
                 
@@ -394,13 +399,22 @@ export async function setupVideo(filename, startOffset = -1) {
                     qualitySelector.appendChild(option);
                 });
 
-                let startingQuality = 0;
+                let startingQuality = -1;
 
-                if (State.targetQuality !== undefined && State.targetQuality !== -1) {
-                    startingQuality = State.targetQuality;
+                if (State.targetQuality !== undefined) {
+                    if (State.targetQuality === -2) {
+                        startingQuality = hls.levels.length - 1; 
+                    } else {
+                        startingQuality = State.targetQuality;
+                    }
+                }
+
+                if (startingQuality !== -1) {
                     hls.currentLevel = startingQuality;
                     hls.nextLoadLevel = startingQuality;
                 }
+
+                qualitySelector.value = startingQuality;
 
                 qualitySelector.value = startingQuality;
 
@@ -469,13 +483,7 @@ export async function setupVideo(filename, startOffset = -1) {
     loadThumbnails(basePath);
 
     try {
-        const metaRes = await fetch(`${basePath}/meta.json?t=${Date.now()}`);
-        if (metaRes.ok) {
-            const metaInfo = await metaRes.json();
-            title.innerText = metaInfo.title;
-        } else {
-            title.innerText = cleanName.split('/').slice(-2, -1)[0].replace('_HLS', '');
-        }
+        title.innerText = cleanName.split('/').slice(-2, -1)[0].replace('_HLS', '');
     } catch (e) {
         title.innerText = cleanName.split('/').slice(-2, -1)[0].replace('_HLS', '');
     }
