@@ -1,5 +1,5 @@
 const { activeRooms, creationSpamFilter, roomSpamTimer } = require('../store');
-const { sanitize, checkFileSubtitles, deleteRoomVideo } = require('../utils');
+const { sanitize, checkFileSubtitles, deleteRoomVideo } = require('../utils/utils');
 const db = require('../db/queries');
 require('dotenv').config(); 
 

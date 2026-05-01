@@ -1,5 +1,5 @@
-const { runStartupCleanup, initializeVideoList} = require('./utils.js');
-const socketHandler = require('./socketHandler.js');
+const { runStartupCleanup, initializeVideoList} = require('./utils/utils.js');
+const socketHandler = require('./sockets/socketHandler.js');
 
 async function bootServer() {
     await runStartupCleanup();
