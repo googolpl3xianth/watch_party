@@ -211,6 +211,10 @@ export function updateUserCount(){
 export function updateUserList(socketId, username, role, buffering=null){
     username = username || State.usersArray[socketId].username;
     role = role || State.usersArray[socketId].role;
+
+    const inSwarm = State.usersArray[socketId].inSwarm || false; 
+    const currentUserCount = Object.keys(State.usersArray || {}).length;
+
     let displayText = `${username} (${role})`;
     if(socketId === socket.id){ 
         displayText += ' *'; 
@@ -261,6 +265,29 @@ export function updateUserList(socketId, username, role, buffering=null){
 
         userList.appendChild(userDiv);
     }
+
+    let badge = userDiv.querySelector('.swarm-badge');
+    if (!badge) {
+        badge = document.createElement('span');
+        badge.classList.add('swarm-badge');
+        badge.style.marginLeft = '10px';
+        badge.style.fontSize = '0.85em';
+        badge.style.fontWeight = 'bold';
+        userDiv.appendChild(badge);
+    }
+
+    if (currentUserCount >= State.p2pThreshold) {
+        badge.style.display = 'inline';
+        if (inSwarm) {
+            badge.textContent = '🌐 Swarm';
+            badge.style.color = '#00ff00';
+        } else {
+            badge.textContent = '☁️ Server';
+            badge.style.color = '#aaaaaa';
+        }
+    } else {
+        badge.style.display = 'none';
+    }
 }
 
 export function removeUser(disconnectedSocketId){
@@ -283,16 +310,20 @@ export function showGate(){
     joinBtn.style.display = 'flex';
 }
 
-export function showPermOnly(){
+export function showPermOnly(forceRole = null){
     const hostElements = document.querySelectorAll('.host-only');
     const permElements = document.querySelectorAll('.perms-only');
     const guestElements = document.querySelectorAll('.guest-only');
 
-    if(State.usersArray[socket.id]){
+    if (forceRole) {
+        State.isHost = (forceRole === 'host');
+        State.sync_perm = (forceRole === 'host' || forceRole === 'admin');
+    } else if (State.usersArray[socket.id]) {
         const myConfirmedRole = State.usersArray[socket.id].role;
         State.isHost = (myConfirmedRole === 'host');
         State.sync_perm = (myConfirmedRole === 'host' || myConfirmedRole === 'admin');
     }
+
 
     if (State.sync_perm) {
         if(State.isHost){
@@ -360,7 +391,8 @@ function rename(){
     let username = window.prompt("What's your username?");
     if (username) {
         usernameHeader.innerText = `Name: ${username}`;
-        updateUser(socket.id, username, null); // Always update your own name
+        updateUser(socket.id, username, null);
+        localStorage.setItem('watchPartyUsername', username);
     }
     userMenu.classList.remove('visible');
 }

@@ -3,7 +3,7 @@ import Hls from 'hls.js';
 import { HlsJsP2PEngine } from "p2p-media-loader-hlsjs";
 window.Hls = Hls;
 import { State } from './state.js';
-import { emitSync, sync, checkSubtitles, clientBuffering, clientRecovered, emitQualityChange } from './network.js';
+import { emitSync, sync, checkSubtitles, clientBuffering, clientRecovered, emitQualityChange, updateP2PStatus } from './network.js';
 
 const hlsConfig = {
     startLevel: 0,
@@ -35,6 +35,8 @@ let hls = null;
 let isScrubbing = false;
 let currentBasePath = "";
 let spriteCues = [];
+export let isSettingUpVideo = false;
+let currentVideoMode = 'none';
 
 const wrapper = document.getElementById('video-wrapper');
 const video = document.getElementById('myVideo');
@@ -294,222 +296,271 @@ export function joinVideo(){
 }
 
 export async function setupVideo(filename, startOffset = -1) {
+    //console.trace(`[DEBUG] setupVideo called for: ${filename}`);
     if (!filename) return;
+    if (isSettingUpVideo) {
+        //console.log("[SYSTEM] Setup already in progress. Ignoring duplicate request.");
+        return;
+    }
+
+    const currentUserCount = Object.keys(State.usersArray || {}).length;
+    const shouldBeP2P = currentUserCount >= State.p2pThreshold;
+
+    const targetMode = shouldBeP2P ? 'p2p' : 'standard';
+
+    if (State.currentCurrentFilename === filename && hls !== null) {
+        // Instead of checking the player object, check our explicit tracker!
+        if (currentVideoMode === targetMode) {
+            //console.log(`[SYSTEM] Video already in ${targetMode} mode. Aborting duplicate build.`);
+            return; 
+        }
+        //console.log(`[SYSTEM] User threshold crossed. Upgrading/Downgrading P2P engine...`);
+    }   
+
+    isSettingUpVideo = true;
+    State.currentCurrentFilename = filename;
+
+    currentVideoMode = targetMode;
+
     playPauseIcon.src = "/img/play.svg";
     playPauseIcon.alt = "play";
 
     const title = document.getElementById('video-title');
-    if (hls) { hls.destroy(); hls = null; }
 
-    const trackElement = video.querySelector('track[kind="subtitles"]');
-    if (trackElement) {
-        if (trackElement.track) {
-            trackElement.track.mode = 'hidden'; 
-        }
-        video.removeChild(trackElement);
-    }
-
-    video.innerHTML = '';
-    ccBtn.style.display = 'none'; 
-
-    const cleanName = filename.replace(/\\/g, '/');
-    const encodedPath = cleanName.split('/').map(encodeURIComponent).join('/');
-    const videoUrl = `${window.location.origin}/media/compressed/${encodedPath}`;
-    const basePath = videoUrl.substring(0, videoUrl.lastIndexOf('/'));
-    currentBasePath = basePath;
-    spriteCues = [];
-
-    if (filename.endsWith('.m3u8')) {
-        video.removeAttribute('src'); 
-
-        if (typeof Hls !== 'undefined' && Hls.isSupported()) {
-            if (startOffset > -1) {
-                hlsConfig.startPosition = startOffset;
-            } else {
-                delete hlsConfig.startPosition;
+    try{
+        if (hls) { 
+	        if (hls.p2pEngine) {
+                hls.p2pEngine.destroy();
             }
+	        hls.destroy(); 
+	        hls = null; 
+        }
 
-            delete hlsConfig.startLevel;
+        const trackElement = video.querySelector('track[kind="subtitles"]');
+        if (trackElement) {
+            if (trackElement.track) {
+                trackElement.track.mode = 'hidden'; 
+            }
+            video.removeChild(trackElement);
+        }
 
-            const currentUserCount = Object.keys(State.usersArray || {}).length;
-            const currentHost = window.location.host;
-            const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            const dynamicTrackerUrl = `${wsProtocol}//${currentHost}/tracker/`;
+        video.innerHTML = '';
+        ccBtn.style.display = 'none'; 
 
-            if (currentUserCount >= State.p2pThreshold) {
-                const HlsWithP2P = HlsJsP2PEngine.injectMixin(Hls);
+        const cleanName = filename.replace(/\\/g, '/');
+        const encodedPath = cleanName.split('/').map(encodeURIComponent).join('/');
+        const videoUrl = `${window.location.origin}/media/compressed/${encodedPath}`;
+        const basePath = videoUrl.substring(0, videoUrl.lastIndexOf('/'));
+        currentBasePath = basePath;
+        spriteCues = [];
 
-                hls = new HlsWithP2P({
-                    ...hlsConfig, 
-                    p2p: {
-                        core: {
-                            swarmId: videoUrl, 
-                            announceTrackers: [dynamicTrackerUrl],
-                            rtcConfig: {
-                                iceServers: [
-                                    { urls: 'stun:stun.l.google.com:19302' },
-                                    { urls: 'stun:global.stun.twilio.com:3478' }
-                                ]
+        updateP2PStatus(false);
+        let connectedPeers = new Set();
+
+        if (filename.endsWith('.m3u8')) {
+            video.removeAttribute('src'); 
+
+            if (typeof Hls !== 'undefined' && Hls.isSupported()) {
+                if (startOffset > -1) {
+                    hlsConfig.startPosition = startOffset;
+                } else {
+                    delete hlsConfig.startPosition;
+                }
+
+                delete hlsConfig.startLevel;
+
+                const currentUserCount = Object.keys(State.usersArray || {}).length;
+                const currentHost = window.location.host;
+                const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+                const dynamicTrackerUrl = `${wsProtocol}//${currentHost}/tracker/`;
+
+                if (currentUserCount >= State.p2pThreshold) {
+                    const HlsWithP2P = HlsJsP2PEngine.injectMixin(Hls);
+                    hls = new HlsWithP2P({
+                        ...hlsConfig, 
+                        p2p: {
+                            core: {
+                                swarmId: videoUrl, 
+                                announceTrackers: [dynamicTrackerUrl],
+                                rtcConfig: {
+                                    iceServers: [
+                                        { urls: 'stun:stun.l.google.com:19302' },
+                                        { urls: 'stun:global.stun.twilio.com:3478' }
+                                    ]
+                                }
                             }
+                        }
+                    });
+
+                    hls.p2pEngine.addEventListener("onPeerConnect", (params) => {
+                        //console.log("%c[P2P SWARM] 🟢 PEER CONNECTED! ID:", "color: lime; font-weight: bold;", params.peerId);
+                        connectedPeers.add(params.peerId);
+                        if (connectedPeers.size === 1) {
+                            updateP2PStatus(true);
+                        }
+                    });
+
+                    hls.p2pEngine.addEventListener("onPeerDisconnect", (params) => {
+                        connectedPeers.delete(params.peerId);
+                        if (connectedPeers.size === 0) {
+                            updateP2PStatus(false);
+                        }
+                    });
+
+                    /*hls.p2pEngine.addEventListener("onChunkDownloaded", (bytes, method) => {
+                        if (method === 'p2p') {
+                            console.log("%c[P2P SWARM] 🚀 DOWNLOADED FROM PEERS!", "color: cyan; font-weight: bold;");
+                        } else {
+                            console.log("%c[FALLBACK] 🐌 Downloaded from Server.", "color: gray;");
+                        }
+                    });*/
+                }
+                else{
+                    hls = new Hls(hlsConfig);
+                }
+
+                const cacheBustedUrl = `${videoUrl}?t=${Date.now()}`;
+                hls.loadSource(cacheBustedUrl);
+                hls.attachMedia(video);
+                
+                hls.on(Hls.Events.MANIFEST_PARSED, function() {
+                    const qualitySelector = document.getElementById('quality-selector');
+
+                    if (hls.levels.length <= 1) {
+                        qualitySelector.style.display = 'none';
+                        return; 
+                    }
+
+                    qualitySelector.style.display = 'inline-block';
+                    qualitySelector.innerHTML = '<option value="-1" style="color: black;">Auto</option>'; 
+                    
+                    hls.levels.forEach((level, index) => {
+                        const option = document.createElement('option');
+                        option.value = index; 
+                        let labelName = `${level.height}p`;
+                        if (level.width === 1920) labelName = "1080p";
+                        else if (level.width === 1280) labelName = "720p";
+                        else if (level.width === 854) labelName = "480p";
+
+                        option.textContent = labelName; 
+                        option.style.color = 'black'; 
+                        qualitySelector.appendChild(option);
+                    });
+
+                    let startingQuality = -1;
+
+                    if (State.targetQuality !== undefined) {
+                        if (State.targetQuality === -2) {
+                            startingQuality = hls.levels.length - 1; 
+                        } else {
+                            startingQuality = State.targetQuality;
+                        }
+                    }
+
+                    if (startingQuality !== -1) {
+                        hls.currentLevel = startingQuality;
+                        hls.nextLoadLevel = startingQuality;
+                    }
+
+                    qualitySelector.value = startingQuality;
+
+                    qualitySelector.value = startingQuality;
+
+                    qualitySelector.addEventListener('change', (e) => {
+                        const newLevel = parseInt(e.target.value);
+
+                        hls.currentLevel = newLevel;
+                        hls.nextLoadLevel = newLevel;
+                        qualitySelector.value = newLevel
+                        
+                        if (State.sync_perm) {
+                            emitQualityChange(newLevel);
+                        }
+                    });
+                });
+
+                hls.on(Hls.Events.LEVEL_SWITCHED, function(event, data) {
+                    const activeLevel = hls.levels[data.level];
+                    let labelName = `Auto (${activeLevel.height})`;
+                
+                    const qualitySelector = document.getElementById('quality-selector');
+                    
+                    if (qualitySelector.value === "-1") {
+                        const autoOption = qualitySelector.querySelector('option[value="-1"]');
+                        if (autoOption) {
+                            if (activeLevel.width === 1920) labelName = "Auto (1080p)";
+                            else if (activeLevel.width === 1280) labelName = "Auto (720p)";
+                            else if (activeLevel.width === 854) labelName = "Auto (480p)";
+                            autoOption.textContent = labelName;
                         }
                     }
                 });
-
-                /*hls.p2pEngine.addEventListener("onPeerConnect", (params) => {
-                    console.log("%c[P2P SWARM] 🟢 PEER CONNECTED! ID:", "color: lime; font-weight: bold;", params.peerId);
-                });*/
-
-                /*hls.p2pEngine.addEventListener("onChunkDownloaded", (bytes, method) => {
-                    if (method === 'p2p') {
-                        console.log("%c[P2P SWARM] 🚀 DOWNLOADED FROM PEERS!", "color: cyan; font-weight: bold;");
-                    } else {
-                        console.log("%c[FALLBACK] 🐌 Downloaded from Server.", "color: gray;");
-                    }
-                });*/
-            }
-            else{
-                hls = new Hls(hlsConfig);
-            }
-
-            const cacheBustedUrl = `${videoUrl}?t=${Date.now()}`;
-            hls.loadSource(cacheBustedUrl);
-            hls.attachMedia(video);
-            
-            hls.on(Hls.Events.MANIFEST_PARSED, function() {
-                const qualitySelector = document.getElementById('quality-selector');
-
-                if (hls.levels.length <= 1) {
-                    qualitySelector.style.display = 'none';
-                    return; 
-                }
-
-                qualitySelector.style.display = 'inline-block';
-                qualitySelector.innerHTML = '<option value="-1" style="color: black;">Auto</option>'; 
                 
-                hls.levels.forEach((level, index) => {
-                    const option = document.createElement('option');
-                    option.value = index; 
-                    let labelName = `${level.height}p`;
-                    if (level.width === 1920) labelName = "1080p";
-                    else if (level.width === 1280) labelName = "720p";
-                    else if (level.width === 854) labelName = "480p";
-
-                    option.textContent = labelName; 
-                    option.style.color = 'black'; 
-                    qualitySelector.appendChild(option);
-                });
-
-                let startingQuality = -1;
-
-                if (State.targetQuality !== undefined) {
-                    if (State.targetQuality === -2) {
-                        startingQuality = hls.levels.length - 1; 
-                    } else {
-                        startingQuality = State.targetQuality;
-                    }
-                }
-
-                if (startingQuality !== -1) {
-                    hls.currentLevel = startingQuality;
-                    hls.nextLoadLevel = startingQuality;
-                }
-
-                qualitySelector.value = startingQuality;
-
-                qualitySelector.value = startingQuality;
-
-                qualitySelector.addEventListener('change', (e) => {
-                    const newLevel = parseInt(e.target.value);
-
-                    hls.currentLevel = newLevel;
-                    hls.nextLoadLevel = newLevel;
-                    qualitySelector.value = newLevel
-                    
-                    if (State.sync_perm) {
-                        emitQualityChange(newLevel);
+                hls.on(Hls.Events.ERROR, function (event, data) {
+                    if (data.fatal) {
+                        switch (data.type) {
+                            case Hls.ErrorTypes.NETWORK_ERROR:
+                                console.warn("Network error. Retrying...", data);
+                                setTimeout(() => hls.startLoad(), 2000);
+                                break;
+                            case Hls.ErrorTypes.MEDIA_ERROR:
+                                console.warn("Fatal media error, recovering...", data);
+                                hls.recoverMediaError();
+                                break;
+                            case Hls.ErrorTypes.OTHER_ERROR:
+                                if (data.details === 'internalException') {
+                                    console.error("[DEMUXER CRASH] FMP4 parsing failed! The internal error is:", data.err);
+                                }
+                                hls.destroy();
+                                break;
+                            default:
+                                console.error("Unrecoverable fatal error.", data);
+                                hls.destroy();
+                                break;
+                        }
                     }
                 });
-            });
-
-            hls.on(Hls.Events.LEVEL_SWITCHED, function(event, data) {
-                const activeLevel = hls.levels[data.level];
-                let labelName = `Auto (${activeLevel.height})`;
-            
-                const qualitySelector = document.getElementById('quality-selector');
-                
-                if (qualitySelector.value === "-1") {
-                    const autoOption = qualitySelector.querySelector('option[value="-1"]');
-                    if (autoOption) {
-                        if (activeLevel.width === 1920) labelName = "Auto (1080p)";
-                        else if (activeLevel.width === 1280) labelName = "Auto (720p)";
-                        else if (activeLevel.width === 854) labelName = "Auto (480p)";
-                        autoOption.textContent = labelName;
-                    }
-                }
-            });
-            
-            hls.on(Hls.Events.ERROR, function (event, data) {
-                if (data.fatal) {
-                    switch (data.type) {
-                        case Hls.ErrorTypes.NETWORK_ERROR:
-                            console.warn("Network error. Retrying...", data);
-                            setTimeout(() => hls.startLoad(), 2000);
-                            break;
-                        case Hls.ErrorTypes.MEDIA_ERROR:
-                            console.warn("Fatal media error, recovering...", data);
-                            hls.recoverMediaError();
-                            break;
-                        case Hls.ErrorTypes.OTHER_ERROR:
-                            if (data.details === 'internalException') {
-                                console.error("[DEMUXER CRASH] FMP4 parsing failed! The internal error is:", data.err);
-                            }
-                            hls.destroy();
-                            break;
-                        default:
-                            console.error("Unrecoverable fatal error.", data);
-                            hls.destroy();
-                            break;
-                    }
-                }
-            });
-        } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-            video.src = videoUrl;
-        }
-    } else {
-        video.src = videoUrl;
-        video.load(); 
-    }
-
-    loadThumbnails(basePath);
-
-    try {
-        title.innerText = cleanName.split('/').slice(-2, -1)[0].replace('_HLS', '');
-    } catch (e) {
-        title.innerText = cleanName.split('/').slice(-2, -1)[0].replace('_HLS', '');
-    }
-
-    checkSubtitles(filename, (hasSubtitles) => {
-        if (hasSubtitles) {
-            const track = document.createElement('track');
-            track.kind = 'subtitles';
-            track.label = 'English';
-            track.srclang = 'en';
-            track.src = `${basePath}/subtitles.vtt`;
-            track.default = true;
-            video.appendChild(track);
-
-            track.addEventListener('load', () => {
-                if (video.textTracks.length > 0) {
-                    video.textTracks[0].mode = 'showing';
-                    ccBtn.style.display = 'block';
-                    ccBtn.style.color = "#ff0000"; 
-                    ccBtn.style.opacity = "1";
-                }
-            });
+            } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+                video.src = videoUrl;
+            }
         } else {
-            ccBtn.style.display = 'none';
+            video.src = videoUrl;
+            video.load(); 
         }
-    });
+
+        loadThumbnails(basePath);
+
+        try {
+            title.innerText = cleanName.split('/').slice(-2, -1)[0].replace('_HLS', '');
+        } catch (e) {
+            title.innerText = cleanName.split('/').slice(-2, -1)[0].replace('_HLS', '');
+        }
+
+        checkSubtitles(filename, (hasSubtitles) => {
+            if (hasSubtitles) {
+                const track = document.createElement('track');
+                track.kind = 'subtitles';
+                track.label = 'English';
+                track.srclang = 'en';
+                track.src = `${basePath}/subtitles.vtt`;
+                track.default = true;
+                video.appendChild(track);
+
+                track.addEventListener('load', () => {
+                    if (video.textTracks.length > 0) {
+                        video.textTracks[0].mode = 'showing';
+                        ccBtn.style.display = 'block';
+                        ccBtn.style.color = "#ff0000"; 
+                        ccBtn.style.opacity = "1";
+                    }
+                });
+            } else {
+                ccBtn.style.display = 'none';
+            }
+        });
+    } finally{
+        isSettingUpVideo = false;
+    }
 }
 
 export function executeSync(data) {

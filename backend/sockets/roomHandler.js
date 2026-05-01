@@ -46,7 +46,10 @@ module.exports = function(io, socket) {
         socket.emit('room-created', newID);
     });
 
-    socket.on('join-room', (roomId) => {
+    socket.on('join-room', (payload) => {
+        const roomId = typeof payload === 'string' ? payload : payload.roomId;
+        const hostToken = typeof payload === 'string' ? null : payload.hostToken;
+        const requestedName = typeof payload === 'string' ? null : payload.username;
         if (activeRooms[roomId]) {
             socket.join(roomId);
             socket.data.currentRoomId = roomId;
@@ -59,14 +62,24 @@ module.exports = function(io, socket) {
             const users = activeRooms[roomId].users;
 
             if(!(socket.id in users)){
-                if(!activeRooms[roomId].host){
+                if (!activeRooms[roomId].host || hostToken === roomId) {
+                    if (activeRooms[roomId].host && activeRooms[roomId].host !== socket.id) {
+                        const tempHostId = activeRooms[roomId].host;
+                        if (users[tempHostId]) {
+                            users[tempHostId].role = 'guest';
+                            io.to(roomId).emit('switch-permission', tempHostId, null, 'guest');
+                        }
+                    }
                     role = 'host';
                     activeRooms[roomId].host = socket.id;
                     //console.log(`Roomid: ${socket.data.currentRoomId} ${socket.id} promoted to Host`);
                 }
-                users[socket.id] = {
+
+                const finalName = requestedName ? requestedName : `User-${socket.id.substring(0, 4)}`;
+                users[socket.id] = {    
                     role: role,
-                    username:`User-${socket.id.substring(0, 4)}`
+                    username: finalName,
+                    inSwarm: false
                 };
             }
             //console.log(`Roomid: ${socket.data.currentRoomId} User Joined: ${socket.id}`);
@@ -75,14 +88,17 @@ module.exports = function(io, socket) {
                         quality: activeRooms[roomId].videoQuality,
                         p2pThreshold: SWARM_THRESHOLD});
             io.to(roomId).emit('update-user-list', activeRooms[socket.data.currentRoomId].users);
-
-            const currentRoomUsers = Object.keys(activeRooms[roomId].users).length;
-                
-            if (currentRoomUsers === SWARM_THRESHOLD) {
-                io.to(roomId).emit('upgrade-to-swarm');
-            }
         } else {
             socket.emit('join-error', 'This room does not exist or has expired.');
+        }
+    });
+
+    socket.on('update-p2p-status', (isInSwarm) => {
+        const roomId = socket.data.currentRoomId;
+        if (roomId && activeRooms[roomId] && activeRooms[roomId].users[socket.id]) {
+            activeRooms[roomId].users[socket.id].inSwarm = isInSwarm;
+
+            io.to(roomId).emit('update-user-list', activeRooms[roomId].users);
         }
     });
 

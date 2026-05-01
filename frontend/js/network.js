@@ -1,6 +1,6 @@
 // js/network.js
 import { State } from './state.js';
-import { setupVideo, executeSync, getVideoData, reloadVideo, changeQuality } from './video.js';
+import { setupVideo, executeSync, getVideoData, reloadVideo, changeQuality, isSettingUpVideo } from './video.js';
 import { showRoom, showGate, hideRoomStatus, showPermOnly, setVideoSelect, updateUserCount, updateUserList, removeUser, getSelectedVideo, setupLobbyUI, changeRoomStatus} from './ui.js';
 
 export const socket = io({secure: true, transports: ['websocket'] });
@@ -18,17 +18,20 @@ export function initializeNetwork(){
 
     socket.on('join-success', (data) => {
         let permission = data.role;
+        if (permission === 'host') {
+            sessionStorage.setItem('watchPartyHostToken', State.roomId);
+        }
         State.targetQuality = data.quality;
         State.p2pThreshold = data.p2pThreshold;
+
+        State.isHost = (permission === 'host');
+        State.sync_perm = (permission === 'host' || permission === 'admin');
 
         document.documentElement.classList.remove('direct-join');
         showRoom();
         socket.emit('update-video-list');
 
-        State.isHost = (permission === 'host');
-        State.sync_perm = (permission === 'host' || permission === 'admin');
-
-        showPermOnly();
+        showPermOnly(permission);
         //console.log("Reqesting to load video");
         socket.emit('request-load-video');
         setupSocketLogic(socket); 
@@ -70,7 +73,10 @@ function setupSocketUI(){
     socket.on('update-user-list', (usersData) => {
         if (!usersData) return;
 
+        const oldUserCount = State.usersArray ? Object.keys(State.usersArray).length : 0;
+
         State.usersArray = usersData;
+        const newUserCount = Object.keys(State.usersArray).length;
 
         updateUserCount();
 
@@ -81,9 +87,15 @@ function setupSocketUI(){
             
             const targetName = userDetails.username || 'Guest';
             const targetRole = userDetails.role || 'guest';
-
+              
             updateUserList(socketId, targetName, targetRole);
         };
+
+        if (oldUserCount > 0 && oldUserCount < State.p2pThreshold && newUserCount >= State.p2pThreshold) {
+            if (!isSettingUpVideo) {
+                reloadVideo(); 
+            }
+        }
     });
 
     socket.on('user-left', (disconnectedSocketId) => {
@@ -98,11 +110,7 @@ function setupSocketLogic() {
         return; 
     }
     logicInitialized = true;
-
-    socket.on('upgrade-to-swarm', () => {
-        reloadVideo();
-    });
-
+    
     socket.on('load-new-video', (filename) => {
         if (State.currentVideoFilename === filename || !filename) return;
         hideRoomStatus();
@@ -176,7 +184,10 @@ export function createRoom() {
 }
 
 export function joinRoom(){
-    socket.emit('join-room', roomId);
+    const token = sessionStorage.getItem('watchPartyHostToken');
+    const savedName = localStorage.getItem('watchPartyUsername') || null;
+
+    socket.emit('join-room', {roomId, hostToken: token, username: savedName});
 }
 
 export function checkSubtitles(filename, callback) {
@@ -197,6 +208,10 @@ export function requestChange(filename) {
 
 export function updateUser(targetId=null, username=null, role=null){
     socket.emit('request-user-change', targetId, username, role);
+}
+
+export function updateP2PStatus(P2PStatus){
+    socket.emit('update-p2p-status', P2PStatus);
 }
 
 // Video logic
