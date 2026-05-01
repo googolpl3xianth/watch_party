@@ -9,10 +9,10 @@ $originalGuid = ([regex]::Match($activeScheme, '(?<=GUID: ).*?(?=\s*\()')).Value
 
 powercfg /setactive c3ec271b-edf6-44e2-8232-7c2fc4879cfd
 
-$sourceDir = "C:\Users\verti\Projects\watch_party\data\media\uncompressed"
-$destDir   = "C:\Users\verti\Projects\watch_party\data\media\compressed"
-#$sourceDir = "U:\"
-#$destDir = "X:\"
+#$sourceDir = "C:\Users\verti\Projects\watch_party\data\media\uncompressed"
+#$destDir   = "C:\Users\verti\Projects\watch_party\data\media\compressed"
+$sourceDir = "U:\"
+$destDir = "X:\"
 
 $targetAudioLang = "jpn"
 $targetSubLang   = "eng"
@@ -75,10 +75,11 @@ foreach ($vid in $videoFiles) {
             "-loglevel", "warning",
             "-fflags", "+genpts",   
             "-i", "`"$inputPath`"",
-            "-filter_complex", "`"[0:v]split=3[v1][v2][v3];[v1]scale=1920:-2,format=yuv420p[v1out];[v2]scale=1280:-2,format=yuv420p[v2out];[v3]scale=854:-2,format=yuv420p[v3out]`"",
-            "-map", "`"[v3out]`"", "-c:v:0", "h264_nvenc", "-b:v:0", "1200k", "-maxrate:v:0", "1500k", "-bufsize:v:0", "3000k", "-g", "48", "-no-scenecut", "1",
-            "-map", "`"[v2out]`"", "-c:v:1", "h264_nvenc", "-b:v:1", "3500k", "-maxrate:v:1", "4000k", "-bufsize:v:1", "8000k", "-g", "48", "-no-scenecut", "1",
-            "-map", "`"[v1out]`"", "-c:v:2", "h264_nvenc", "-b:v:2", "8000k", "-maxrate:v:2", "9000k", "-bufsize:v:2", "18000k", "-g", "48", "-no-scenecut", "1",
+            "-filter_complex", "`"[0:v]split=3[v1][v2][v3];[v1]scale=1920:-2,format=yuv420p[v1out];[v2]scale=1920:-2,format=yuv420p[v2out];[v3]scale=1920:-2,format=yuv420p[v3out]`"",
+            "-map", "`"[v3out]`"", "-c:v:2", "h264_nvenc", "-b:v:2", "8000k", "-maxrate:v:2", "9000k", "-bufsize:v:2", "18000k", "-g", "48", "-no-scenecut", "1",
+            "-map", "`"[v2out]`"", "-c:v:2", "h264_nvenc", "-b:v:2", "14000k", "-maxrate:v:2", "16000k", "-bufsize:v:2", "32000k", "-g", "48", "-no-scenecut", "1",
+            "-map", "`"[v1out]`"", "-c:v:3", "h264_nvenc", "-b:v:3", "24000k", "-maxrate:v:3", "28000k", "-bufsize:v:3", "56000k", "-g", "48", "-no-scenecut", "1",
+
             "-map", "$audioMap", "-c:a", "aac", "-b:a", "192k", "-ac", "2",
             "-fps_mode", "cfr",
             "-max_muxing_queue_size", "1024",
@@ -87,6 +88,7 @@ foreach ($vid in $videoFiles) {
             "-hls_playlist_type", "vod",
             "-hls_segment_type", "fmp4",
             "-avoid_negative_ts", "make_non_negative",
+            
             "-var_stream_map", "`"v:0,agroup:audio v:1,agroup:audio v:2,agroup:audio a:0,agroup:audio,default:yes`"",
             "-master_pl_name", "`"$masterPlaylistName`"",
             "-hls_segment_filename", "`"$segmentFileName`"",

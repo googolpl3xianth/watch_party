@@ -385,7 +385,23 @@ export async function setupVideo(filename, startOffset = -1) {
                                 rtcConfig: {
                                     iceServers: [
                                         { urls: 'stun:stun.l.google.com:19302' },
-                                        { urls: 'stun:global.stun.twilio.com:3478' }
+                                        { urls: 'stun:stun.cloudflare.com:3478' },
+
+                                        {
+                                            urls: `turn:${import.meta.env.VITE_EXPRESS}:3478`,
+                                            username: import.meta.env.VITE_EXPRESS_USER,
+                                            credential: import.meta.env.VITE_EXPRESS_PASS,
+                                        },
+                                        {
+                                            urls: `turn:${import.meta.env.VITE_EXPRESS}:3478?transport=tcp`,
+                                            username: import.meta.env.VITE_EXPRESS_USER,
+                                            credential: import.meta.env.VITE_EXPRESS_PASS,
+                                        },
+                                        {
+                                            urls: `turns:${import.meta.env.VITE_METERED_URL}:443?transport=tcp`,
+                                            username: import.meta.env.VITE_METERED_USERNAME,
+                                            credential: import.meta.env.VITE_METERED_CREDENTIAL,
+                                        }
                                     ]
                                 }
                             }
@@ -432,13 +448,24 @@ export async function setupVideo(filename, startOffset = -1) {
                     }
 
                     qualitySelector.style.display = 'inline-block';
-                    qualitySelector.innerHTML = '<option value="-1" style="color: black;">Auto</option>'; 
                     
                     hls.levels.forEach((level, index) => {
                         const option = document.createElement('option');
                         option.value = index; 
+
                         let labelName = `${level.height}p`;
-                        if (level.width === 1920) labelName = "1080p";
+
+                        if (level.width === 1920) {
+                            const mbps = Math.round(level.bitrate / 1000000); 
+                            
+                            if (mbps <= 10) {
+                                labelName = "1080p (Standard - 9 Mbps)";
+                            } else if (mbps <= 18) {
+                                labelName = "1080p (High - 16 Mbps)";
+                            } else {
+                                labelName = "1080p (Source - 28 Mbps)";
+                            }
+                        }
                         else if (level.width === 1280) labelName = "720p";
                         else if (level.width === 854) labelName = "480p";
 
@@ -464,8 +491,6 @@ export async function setupVideo(filename, startOffset = -1) {
 
                     qualitySelector.value = startingQuality;
 
-                    qualitySelector.value = startingQuality;
-
                     qualitySelector.addEventListener('change', (e) => {
                         const newLevel = parseInt(e.target.value);
 
@@ -475,6 +500,29 @@ export async function setupVideo(filename, startOffset = -1) {
                         
                         if (State.sync_perm) {
                             emitQualityChange(newLevel);
+                        }
+                    });
+
+                    checkSubtitles(filename, (hasSubtitles) => {
+                        if (hasSubtitles) {
+                            const track = document.createElement('track');
+                            track.kind = 'subtitles';
+                            track.label = 'English';
+                            track.srclang = 'en';
+                            track.src = `${basePath}/subtitles.vtt`;
+                            track.default = true;
+                            video.appendChild(track);
+
+                            track.addEventListener('load', () => {
+                                if (video.textTracks.length > 0) {
+                                    video.textTracks[0].mode = 'showing';
+                                    ccBtn.style.display = 'block';
+                                    ccBtn.style.color = "#ff0000"; 
+                                    ccBtn.style.opacity = "1";
+                                }
+                            });
+                        } else {
+                            ccBtn.style.display = 'none';
                         }
                     });
                 });
@@ -535,29 +583,6 @@ export async function setupVideo(filename, startOffset = -1) {
         } catch (e) {
             title.innerText = cleanName.split('/').slice(-2, -1)[0].replace('_HLS', '');
         }
-
-        checkSubtitles(filename, (hasSubtitles) => {
-            if (hasSubtitles) {
-                const track = document.createElement('track');
-                track.kind = 'subtitles';
-                track.label = 'English';
-                track.srclang = 'en';
-                track.src = `${basePath}/subtitles.vtt`;
-                track.default = true;
-                video.appendChild(track);
-
-                track.addEventListener('load', () => {
-                    if (video.textTracks.length > 0) {
-                        video.textTracks[0].mode = 'showing';
-                        ccBtn.style.display = 'block';
-                        ccBtn.style.color = "#ff0000"; 
-                        ccBtn.style.opacity = "1";
-                    }
-                });
-            } else {
-                ccBtn.style.display = 'none';
-            }
-        });
     } finally{
         isSettingUpVideo = false;
     }
