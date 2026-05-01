@@ -8,6 +8,6 @@ RUN npm install
 
 COPY . .
 
-RUN chmod +x /app/convert_videos.sh
+RUN chmod +x /app/scripts/convert_videos.sh
 
 CMD ["node", "worker.js"]

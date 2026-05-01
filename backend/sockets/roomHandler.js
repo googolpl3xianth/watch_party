@@ -1,29 +1,22 @@
 const { activeRooms, creationSpamFilter, roomSpamTimer } = require('../store');
-const { getVideoList, sanitize, checkFileSubtitles, deleteRoomVideo } = require('../utils');
+const { sanitize, checkFileSubtitles, deleteRoomVideo } = require('../utils/utils');
+const db = require('../db/queries');
 require('dotenv').config(); 
 
 const SWARM_THRESHOLD = 3;
 
 module.exports = function(io, socket) {
 
-    socket.on('update-video-list', () =>{
+    socket.on('update-video-list', async () =>{
         if (socket.data.currentRoomId) {
             const currentRoom = socket.data.currentRoomId;
         
-            getVideoList('/media/compressed').then(list => {
-                const filteredList = list.filter(item => {
-                    const parts = item.split('/');
-                    const topFolder = parts[0];
-
-                    if (topFolder === currentRoom) return true;
-                    
-                    if (topFolder.length === 6) return false; 
-                    
-                    return true; 
-                });
-
-                socket.emit('video-list', filteredList);
-            });
+            try {
+                let list = await db.getVideoList(currentRoom); 
+                socket.emit('video-list', list);
+            } catch (err) {
+                console.error("Failed to fetch video list:", err);
+            }
         }
     });
 
@@ -45,33 +38,48 @@ module.exports = function(io, socket) {
                               host: null, 
                               users: {}, 
                               bufferingUsers: new Set(),
-                              videoQuality: -1,};
+                              videoQuality: -2,};
+
+        db.createRoom(newID, socket.id).catch(console.error);
 
         //console.log(`Room created: ${newID} by host: ${socket.id}`);
         socket.emit('room-created', newID);
     });
 
-    socket.on('join-room', (roomId) => {
+    socket.on('join-room', (payload) => {
+        const roomId = typeof payload === 'string' ? payload : payload.roomId;
+        const hostToken = typeof payload === 'string' ? null : payload.hostToken;
+        const requestedName = typeof payload === 'string' ? null : payload.username;
         if (activeRooms[roomId]) {
             socket.join(roomId);
             socket.data.currentRoomId = roomId;
 
             if (activeRooms[roomId].videoQuality === undefined) {
-                activeRooms[roomId].videoQuality = 0;
+                activeRooms[roomId].videoQuality = -2;
             }
 
             let role = 'guest';
             const users = activeRooms[roomId].users;
 
             if(!(socket.id in users)){
-                if(!activeRooms[roomId].host){
+                if (!activeRooms[roomId].host || hostToken === roomId) {
+                    if (activeRooms[roomId].host && activeRooms[roomId].host !== socket.id) {
+                        const tempHostId = activeRooms[roomId].host;
+                        if (users[tempHostId]) {
+                            users[tempHostId].role = 'guest';
+                            io.to(roomId).emit('switch-permission', tempHostId, null, 'guest');
+                        }
+                    }
                     role = 'host';
                     activeRooms[roomId].host = socket.id;
                     //console.log(`Roomid: ${socket.data.currentRoomId} ${socket.id} promoted to Host`);
                 }
-                users[socket.id] = {
+
+                const finalName = requestedName ? requestedName : `User-${socket.id.substring(0, 4)}`;
+                users[socket.id] = {    
                     role: role,
-                    username:`User-${socket.id.substring(0, 4)}`
+                    username: finalName,
+                    inSwarm: false
                 };
             }
             //console.log(`Roomid: ${socket.data.currentRoomId} User Joined: ${socket.id}`);
@@ -80,14 +88,17 @@ module.exports = function(io, socket) {
                         quality: activeRooms[roomId].videoQuality,
                         p2pThreshold: SWARM_THRESHOLD});
             io.to(roomId).emit('update-user-list', activeRooms[socket.data.currentRoomId].users);
-
-            const currentRoomUsers = Object.keys(activeRooms[roomId].users).length;
-                
-            if (currentRoomUsers === SWARM_THRESHOLD) {
-                io.to(roomId).emit('upgrade-to-swarm');
-            }
         } else {
             socket.emit('join-error', 'This room does not exist or has expired.');
+        }
+    });
+
+    socket.on('update-p2p-status', (isInSwarm) => {
+        const roomId = socket.data.currentRoomId;
+        if (roomId && activeRooms[roomId] && activeRooms[roomId].users[socket.id]) {
+            activeRooms[roomId].users[socket.id].inSwarm = isInSwarm;
+
+            io.to(roomId).emit('update-user-list', activeRooms[roomId].users);
         }
     });
 
@@ -117,10 +128,23 @@ module.exports = function(io, socket) {
         }
     });
 
-    socket.on('worker-transcode-ready', (data) => {
+    socket.on('worker-transcode-progress', (data) => {
         if (data.secret !== `${process.env.UPLOAD_KEY}`) return;
         
-        if (data.roomId && data.finalPath) {
+        if (data.roomId && data.progress !== undefined) {
+            io.to(data.roomId).emit('transcode-progress', data.progress);
+        }
+    });
+
+    socket.on('worker-transcode-ready', async (data) => {
+        if (data.secret !== `${process.env.UPLOAD_KEY}`) {console.error("🚨 Unauthorized worker tried to update DB!"); return;}
+
+        if (data.roomId && data.videoName && data.finalPath) {
+            try {
+                await db.saveVideo(data.roomId, data.videoName, data.finalPath);
+            } catch (dbErr) {
+                console.warn(`[WARNING] Failed to insert ${file.name} into DB:`, dbErr.message);
+            }
             io.to(data.roomId).emit('transcode-ready', data.finalPath);
 
             if (activeRooms[data.roomId]) {
@@ -128,17 +152,12 @@ module.exports = function(io, socket) {
                 io.to(data.roomId).emit('load-new-video', data.finalPath);
             }
 
-            getVideoList('/media/compressed').then(list => {
-                const filteredList = list.filter(item => {
-                    const parts = item.split('/');
-                    const topFolder = parts[0];
-
-                    if (topFolder === data.roomId) return true;
-                    if (topFolder.length === 6) return false; 
-                    return true; 
-                });
-                io.to(data.roomId).emit('video-list', filteredList);
-            }).catch(err => console.error("Failed to update list:", err));
+            try {
+                let list = await db.getVideoList(data.roomId); 
+                io.to(data.roomId).emit('video-list', list);
+            } catch (err) {
+                console.error("Failed to fetch video list:", err);
+            }
         }
     });
 

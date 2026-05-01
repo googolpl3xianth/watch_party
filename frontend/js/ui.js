@@ -2,6 +2,7 @@
 import { State } from './state.js';
 import { socket, createRoom, requestChange, updateUser} from './network.js'
 import { joinVideo } from './video.js'
+import { pingWorker } from './upload.js'
 
 const roomCodeInput = document.getElementById('room-code-input');
 const lobbyDiv = document.getElementById('lobby');
@@ -16,6 +17,7 @@ const roomStatus = document.getElementById('room-status');
 const joinGate = document.getElementById('join-gate');
 const joinBtn = document.getElementById('join-btn');
 const uploadArea = document.getElementById('upload-area');
+const uploadBtn = document.getElementById('open-upload-modal-btn')
 
 export function setupLobbyUI(){
     document.getElementById('page-loader').style.display = 'none';
@@ -41,7 +43,7 @@ export function setupRoomUI() {
     document.getElementById('edit-name-btn').addEventListener('click', rename);
     document.getElementById('home-btn').addEventListener('click', goHome);
     document.getElementById('load-video-btn').addEventListener('click', () => requestChange());
-    document.getElementById('open-upload-modal-btn').addEventListener('click', openUpload);
+    uploadBtn.addEventListener('click', openUpload);
 
     userCountBtn.addEventListener('click', getUserList);
     document.getElementById('change-role-btn').addEventListener('click', (event) => {getRoleList(event)});
@@ -122,13 +124,61 @@ export function showRoom(){
 }
 
 export function setVideoSelect(files){
-    videoSelect.innerHTML = '<option value="">-- Select a Video --</option>'; // Reset
+    videoSelect.innerHTML = '<option value="">-- Select a Video --</option>';
+
+    const groupedVideos = {};
+    const uncategorizedVideos = [];
+
+    const uniqueFiles = [...new Set(files)];
+
     files.forEach(file => {
-        const option = document.createElement('option');
-        option.value = file;
-        option.textContent = file;
-        videoSelect.appendChild(option);
+        const parts = file.split('/');
+        
+        if (parts.length >= 3) {
+            const seriesName = parts[0]; 
+
+            let displayName = parts.slice(1).join(' / ');
+            displayName = displayName.replace('/master.m3u8', '').replace('master.m3u8', 'Video File');
+            
+            if (!groupedVideos[seriesName]) {
+                groupedVideos[seriesName] = [];
+            }
+            groupedVideos[seriesName].push({ path: file, name: displayName });
+        } else {
+            uncategorizedVideos.push({ path: file, name: file });
+        }
     });
+
+    const sortedSeriesNames = Object.keys(groupedVideos).sort((a, b) => a.localeCompare(b));
+
+    for (const series of sortedSeriesNames) {
+        const optgroup = document.createElement('optgroup');
+        optgroup.label = series;
+
+        const videos = groupedVideos[series].sort((a, b) => a.name.localeCompare(b.name));
+
+        videos.forEach(video => {
+            const option = document.createElement('option');
+            option.value = video.path;
+            option.textContent = video.name;
+            optgroup.appendChild(option);
+        });
+
+        videoSelect.appendChild(optgroup);
+    }
+
+    if (uncategorizedVideos.length > 0) {
+        const optgroup = document.createElement('optgroup');
+        optgroup.label = "Other Uploads";
+        
+        uncategorizedVideos.sort((a, b) => a.name.localeCompare(b.name)).forEach(video => {
+            const option = document.createElement('option');
+            option.value = video.path;
+            option.textContent = video.name;
+            optgroup.appendChild(option);
+        });
+        videoSelect.appendChild(optgroup);
+    }
 }
 
 export function getSelectedVideo(){
@@ -161,6 +211,10 @@ export function updateUserCount(){
 export function updateUserList(socketId, username, role, buffering=null){
     username = username || State.usersArray[socketId].username;
     role = role || State.usersArray[socketId].role;
+
+    const inSwarm = State.usersArray[socketId].inSwarm || false; 
+    const currentUserCount = Object.keys(State.usersArray || {}).length;
+
     let displayText = `${username} (${role})`;
     if(socketId === socket.id){ 
         displayText += ' *'; 
@@ -211,6 +265,29 @@ export function updateUserList(socketId, username, role, buffering=null){
 
         userList.appendChild(userDiv);
     }
+
+    let badge = userDiv.querySelector('.swarm-badge');
+    if (!badge) {
+        badge = document.createElement('span');
+        badge.classList.add('swarm-badge');
+        badge.style.marginLeft = '10px';
+        badge.style.fontSize = '0.85em';
+        badge.style.fontWeight = 'bold';
+        userDiv.appendChild(badge);
+    }
+
+    if (currentUserCount >= State.p2pThreshold) {
+        badge.style.display = 'inline';
+        if (inSwarm) {
+            badge.textContent = '🌐 Swarm';
+            badge.style.color = '#00ff00';
+        } else {
+            badge.textContent = '☁️ Server';
+            badge.style.color = '#aaaaaa';
+        }
+    } else {
+        badge.style.display = 'none';
+    }
 }
 
 export function removeUser(disconnectedSocketId){
@@ -233,16 +310,20 @@ export function showGate(){
     joinBtn.style.display = 'flex';
 }
 
-export function showPermOnly(){
+export function showPermOnly(forceRole = null){
     const hostElements = document.querySelectorAll('.host-only');
     const permElements = document.querySelectorAll('.perms-only');
     const guestElements = document.querySelectorAll('.guest-only');
 
-    if(State.usersArray[socket.id]){
+    if (forceRole) {
+        State.isHost = (forceRole === 'host');
+        State.sync_perm = (forceRole === 'host' || forceRole === 'admin');
+    } else if (State.usersArray[socket.id]) {
         const myConfirmedRole = State.usersArray[socket.id].role;
         State.isHost = (myConfirmedRole === 'host');
         State.sync_perm = (myConfirmedRole === 'host' || myConfirmedRole === 'admin');
     }
+
 
     if (State.sync_perm) {
         if(State.isHost){
@@ -297,14 +378,21 @@ function getRoomLink(){
 }
 
 function openUpload(){
-    uploadArea.style.display = "default";
+    if(pingWorker()){
+        uploadBtn.style.opacity = "1";
+        uploadArea.style.display = "default";
+    }
+    else{
+        uploadBtn.style.opacity = "0.5";
+    }
 }
 
 function rename(){
     let username = window.prompt("What's your username?");
     if (username) {
         usernameHeader.innerText = `Name: ${username}`;
-        updateUser(socket.id, username, null); // Always update your own name
+        updateUser(socket.id, username, null);
+        localStorage.setItem('watchPartyUsername', username);
     }
     userMenu.classList.remove('visible');
 }

@@ -2,12 +2,14 @@ const express = require('express');
 const { Server, EVENTS } = require('@tus/server');
 const { FileStore } = require('@tus/file-store');
 const { spawn } = require('child_process');
+const { io } = require('socket.io-client');
 const path = require('path');
 const fs = require('fs');
-const { io } = require('socket.io-client');
 require('dotenv').config(); 
 
 const app = express();
+
+const maxSize = 10 * 1024 * 1024 * 1024
 
 const UNCOMPRESSED_DIR = '/uncompressed';
 const COMPRESSED_DIR = '/compressed';
@@ -16,6 +18,7 @@ const tusServer = new Server({
     path: '/upload',
     datastore: new FileStore({ directory: UNCOMPRESSED_DIR }),
     relativeLocation: true,
+    maxSize: maxSize,
     allowedOrigins: ['https://watch-party-project.duckdns.org'],
     allowedHeaders: [
         'Origin', 'X-Requested-With', 'Content-Type', 'Accept', 
@@ -29,7 +32,7 @@ const tusServer = new Server({
     ],
 });
 
-tusServer.on(EVENTS.POST_FINISH, (req, res, upload) => {
+tusServer.on(EVENTS.POST_FINISH, async (req, res, upload) => {
     const roomId = upload.metadata?.roomId || upload.id;
     const originalName = upload.metadata?.name || 'Uploaded Video';
 
@@ -37,21 +40,11 @@ tusServer.on(EVENTS.POST_FINISH, (req, res, upload) => {
 
     const uploadedFilePath = path.join(UNCOMPRESSED_DIR, upload.id);
     const outputFolder = path.join(COMPRESSED_DIR, roomId, videoFolderName);
-
-    try {
-        fs.mkdirSync(outputFolder, { recursive: true });
-        fs.writeFileSync(
-            path.join(outputFolder, 'meta.json'), 
-            JSON.stringify({ title: originalName })
-        );
-    } catch (err) {
-        console.error("[ERROR] Failed to write meta.json:", err);
-    }
     
     //console.log(`[SUCCESS] POST_FINISH: ${upload.id}`);
     //console.log(`[TRIGGER] Firing Bash script for: ${uploadedFilePath}`);
 
-    const bashCommand = `bash /app/convert_videos.sh "${uploadedFilePath}" "${outputFolder}"`;
+    const bashCommand = `bash /app/scripts/convert_videos.sh "${uploadedFilePath}" "${outputFolder}"`;
 
     const localSocket = io(`ws://${process.env.SERVER_IP}:3000`, {
         transports: ['websocket'],
@@ -62,17 +55,49 @@ tusServer.on(EVENTS.POST_FINISH, (req, res, upload) => {
         localSocket.emit('worker-transcode-start', { 
             roomId: roomId, 
             secret: `${process.env.UPLOAD_KEY}`,
-            fileSize: upload.size // Pass the size so the frontend can calculate the estimate!
+            fileSize: upload.size 
         });
 
-        const workerProcess = spawn('bash', ['/app/convert_videos.sh', uploadedFilePath, outputFolder]);
+        const workerProcess = spawn('bash', ['/app/scripts/convert_videos.sh', uploadedFilePath, outputFolder]);
 
         workerProcess.stdout.on('data', (data) => {
             console.log(`[BASH]: ${data.toString().trim()}`);
         });
 
+        let totalDurationSeconds = 0;
+        let lastEmittedPercentage = -1;
         workerProcess.stderr.on('data', (data) => {
-            //console.error(`[FFMPEG]: ${data.toString().trim()}`);
+            const output = data.toString();
+
+            if (!totalDurationSeconds) {
+                const durationMatch = output.match(/Duration: (\d{2}):(\d{2}):(\d{2}\.\d{2})/);
+                if (durationMatch) {
+                    const hours = parseFloat(durationMatch[1]);
+                    const minutes = parseFloat(durationMatch[2]);
+                    const seconds = parseFloat(durationMatch[3]);
+                    totalDurationSeconds = (hours * 3600) + (minutes * 60) + seconds;
+                }
+            }
+
+            const timeMatch = output.match(/time=(\d{2}):(\d{2}):(\d{2}\.\d{2})/);
+            if (timeMatch && totalDurationSeconds > 0) {
+                const hours = parseFloat(timeMatch[1]);
+                const minutes = parseFloat(timeMatch[2]);
+                const seconds = parseFloat(timeMatch[3]);
+                const currentTimeSeconds = (hours * 3600) + (minutes * 60) + seconds;
+
+                const percentage = Math.floor((currentTimeSeconds / totalDurationSeconds) * 100);
+
+                if (percentage > lastEmittedPercentage && percentage <= 100) {
+                    lastEmittedPercentage = percentage;
+                    
+                    localSocket.emit('worker-transcode-progress', { 
+                        roomId: roomId, 
+                        secret: `${process.env.UPLOAD_KEY}`,
+                        progress: percentage
+                    });
+                }
+            }
         });
 
         workerProcess.on('close', (code) => {
@@ -85,8 +110,9 @@ tusServer.on(EVENTS.POST_FINISH, (req, res, upload) => {
 
             localSocket.emit('worker-transcode-ready', { 
                 roomId: roomId, 
-                secret: `${process.env.UPLOAD_KEY}` ,
-                finalPath: relativePath
+                secret: `${process.env.UPLOAD_KEY}`,
+                finalPath: relativePath,
+                videoName: videoFolderName
             });
             
             setTimeout(() => localSocket.disconnect(), 500);
@@ -95,6 +121,10 @@ tusServer.on(EVENTS.POST_FINISH, (req, res, upload) => {
     localSocket.on('connect_error', (err) => {
         console.error("[ERROR] Worker could not reach main Socket server:", err.message);
     });
+});
+
+app.get('/upload/health', (req, res) => {
+    res.status(200).send('Worker is online and ready.');
 });
 
 app.post(/^\/upload($|\/.*)/, (req, res, next) => {

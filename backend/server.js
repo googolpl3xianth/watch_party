@@ -1,7 +1,11 @@
-const { runStartupCleanup } = require('./utils.js');
-const socketHandler = require('./socketHandler');
+const { runStartupCleanup, initializeVideoList} = require('./utils/utils.js');
+const socketHandler = require('./sockets/socketHandler.js');
 
-runStartupCleanup();
+async function bootServer() {
+    await runStartupCleanup();
+    await initializeVideoList();
+}
+bootServer();
 
 const io = require('socket.io')(3000, {
     cors: {
