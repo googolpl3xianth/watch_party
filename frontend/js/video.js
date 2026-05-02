@@ -387,7 +387,7 @@ export async function setupVideo(filename, startOffset = -1) {
                                         { urls: 'stun:stun.l.google.com:19302' },
                                         { urls: 'stun:stun.cloudflare.com:3478' },
 
-                                        {
+                                        /* {
                                             urls: `turn:${import.meta.env.VITE_EXPRESS}:3478`,
                                             username: import.meta.env.VITE_EXPRESS_USER,
                                             credential: import.meta.env.VITE_EXPRESS_PASS,
@@ -396,6 +396,16 @@ export async function setupVideo(filename, startOffset = -1) {
                                             urls: `turn:${import.meta.env.VITE_EXPRESS}:3478?transport=tcp`,
                                             username: import.meta.env.VITE_EXPRESS_USER,
                                             credential: import.meta.env.VITE_EXPRESS_PASS,
+                                        }, */
+                                        {
+                                            urls: `turns:${import.meta.env.VITE_METERED_URL}:80`,
+                                            username: import.meta.env.VITE_METERED_USERNAME,
+                                            credential: import.meta.env.VITE_METERED_CREDENTIAL,
+                                        },
+                                        {
+                                            urls: `turns:${import.meta.env.VITE_METERED_URL}`,
+                                            username: import.meta.env.VITE_METERED_USERNAME,
+                                            credential: import.meta.env.VITE_METERED_CREDENTIAL,
                                         },
                                         {
                                             urls: `turns:${import.meta.env.VITE_METERED_URL}:443?transport=tcp`,
