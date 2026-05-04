@@ -397,13 +397,13 @@ export async function setupVideo(filename, startOffset = -1) {
                                             username: import.meta.env.VITE_EXPRESS_USER,
                                             credential: import.meta.env.VITE_EXPRESS_PASS,
                                         }, */
-                                        {
-                                            urls: `turns:${import.meta.env.VITE_METERED_URL}:80`,
+                                        /*{
+                                            urls: `turn:${import.meta.env.VITE_METERED_URL}:80`,
                                             username: import.meta.env.VITE_METERED_USERNAME,
                                             credential: import.meta.env.VITE_METERED_CREDENTIAL,
                                         },
                                         {
-                                            urls: `turns:${import.meta.env.VITE_METERED_URL}`,
+                                            urls: `turn:${import.meta.env.VITE_METERED_URL}`,
                                             username: import.meta.env.VITE_METERED_USERNAME,
                                             credential: import.meta.env.VITE_METERED_CREDENTIAL,
                                         },
@@ -411,7 +411,7 @@ export async function setupVideo(filename, startOffset = -1) {
                                             urls: `turns:${import.meta.env.VITE_METERED_URL}:443?transport=tcp`,
                                             username: import.meta.env.VITE_METERED_USERNAME,
                                             credential: import.meta.env.VITE_METERED_CREDENTIAL,
-                                        }
+                                        }*/
                                     ]
                                 }
                             }
@@ -458,6 +458,8 @@ export async function setupVideo(filename, startOffset = -1) {
                     }
 
                     qualitySelector.style.display = 'inline-block';
+
+                    qualitySelector.innerHTML = '';
                     
                     hls.levels.forEach((level, index) => {
                         const option = document.createElement('option');
@@ -467,14 +469,9 @@ export async function setupVideo(filename, startOffset = -1) {
 
                         if (level.width === 1920) {
                             const mbps = Math.round(level.bitrate / 1000000); 
-                            
-                            if (mbps <= 10) {
-                                labelName = "1080p (Standard - 9 Mbps)";
-                            } else if (mbps <= 18) {
-                                labelName = "1080p (High - 16 Mbps)";
-                            } else {
-                                labelName = "1080p (Source - 28 Mbps)";
-                            }
+                            labelName = `1080p (${mbps} Mbps)`;
+                            labelName = `1080p (${mbps} Mbps`
+                            labelName = `1080p (${mbps} Mbps)`;
                         }
                         else if (level.width === 1280) labelName = "720p";
                         else if (level.width === 854) labelName = "480p";
@@ -539,19 +536,7 @@ export async function setupVideo(filename, startOffset = -1) {
 
                 hls.on(Hls.Events.LEVEL_SWITCHED, function(event, data) {
                     const activeLevel = hls.levels[data.level];
-                    let labelName = `Auto (${activeLevel.height})`;
-                
                     const qualitySelector = document.getElementById('quality-selector');
-                    
-                    if (qualitySelector.value === "-1") {
-                        const autoOption = qualitySelector.querySelector('option[value="-1"]');
-                        if (autoOption) {
-                            if (activeLevel.width === 1920) labelName = "Auto (1080p)";
-                            else if (activeLevel.width === 1280) labelName = "Auto (720p)";
-                            else if (activeLevel.width === 854) labelName = "Auto (480p)";
-                            autoOption.textContent = labelName;
-                        }
-                    }
                 });
                 
                 hls.on(Hls.Events.ERROR, function (event, data) {
