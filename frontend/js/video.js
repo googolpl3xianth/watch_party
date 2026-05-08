@@ -336,6 +336,11 @@ export async function setupVideo(filename, startOffset = -1) {
 	        hls = null; 
         }
 
+        if (window.octopusInstance) {
+            window.octopusInstance.dispose();
+            window.octopusInstance = null;
+        }
+
         const trackElement = video.querySelector('track[kind="subtitles"]');
         if (trackElement) {
             if (trackElement.track) {
@@ -533,6 +538,8 @@ export async function setupVideo(filename, startOffset = -1) {
                             ccBtn.style.color = "#ff0000"; 
                             ccBtn.style.opacity = "1";
 
+                            ccIcon.src = "/img/closed-caption-filled.svg";
+
                             window.octopusInstance = new SubtitlesOctopus({
                                 video: video,
                                 subUrl: `${basePath}/subtitles.ass`,
@@ -691,18 +698,31 @@ function toggleMute(){
 }
 
 function toggleSubtitles() {
-    const textTracks = video.textTracks;
-    if (textTracks.length > 0) {
-        const track = textTracks[0];
+    if (video.textTracks.length > 0) {
+        const track = video.textTracks[0];
         if (track.mode === 'showing') {
             track.mode = 'hidden';
-            ccIcon.src = "/img/closed-caption.svg"
+            ccIcon.src = "/img/closed-caption.svg";
             ccBtn.style.opacity = "0.5";    
-        } 
-        else {
+        } else {
             track.mode = 'showing';
-            ccIcon.src = "/img/closed-caption-filled.svg"
+            ccIcon.src = "/img/closed-caption-filled.svg";
             ccBtn.style.opacity = "1"; 
+        }
+    } 
+    else if (window.octopusInstance) {
+        const octopusCanvas = document.querySelector('.libassjs-canvas-parent') || window.octopusInstance.canvasParent;
+        
+        if (octopusCanvas) {
+            if (octopusCanvas.style.display === 'none') {
+                octopusCanvas.style.display = 'block';
+                ccIcon.src = "/img/closed-caption-filled.svg";
+                ccBtn.style.opacity = "1";
+            } else {
+                octopusCanvas.style.display = 'none';
+                ccIcon.src = "/img/closed-caption.svg";
+                ccBtn.style.opacity = "0.5";
+            }
         }
     }
 }
