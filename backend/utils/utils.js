@@ -94,18 +94,32 @@ function checkFileSubtitles(filename, callback){
 
     const assPath = path.join(basePath, 'subtitles.ass');
     const vttPath = path.join(basePath, 'subtitles.vtt');
+    const fontsPath = path.join(basePath, 'fonts');
 
-    fs.access(assPath, fs.constants.F_OK, (errAss) => {
-        if (!errAss) {
-            return callback('ass'); 
-        }
+    let fontsList = [];
 
-        fs.access(vttPath, fs.constants.F_OK, (errVtt) => {
-            if (!errVtt) {
-                return callback('vtt'); 
+    const checkFonts = (done) => {
+        fs.readdir(fontsPath, (err, files) => {
+            if (!err && files) {
+                fontsList = files.filter(f => f.match(/\.(ttf|otf|woff|woff2)$/i));
             }
-            
-            return callback('none'); 
+            done();
+        });
+    };
+
+    checkFonts(() => {
+        fs.access(assPath, fs.constants.F_OK, (errAss) => {
+            if (!errAss) {
+                return callback({ type: 'ass', fonts: fontsList }); 
+            }
+
+            fs.access(vttPath, fs.constants.F_OK, (errVtt) => {
+                if (!errVtt) {
+                    return callback({ type: 'vtt', fonts: [] }); 
+                }
+                
+                return callback({ type: 'none', fonts: [] }); 
+            });
         });
     });
 }

@@ -10,10 +10,11 @@
     /* Geometry */
     --border-radius: 8px;
     
-    /* Z-Index System (Never guess layers again!) */
+    /* Z-Index System*/
     --z-base: 1;
     --z-dropdown: 100;
     --z-header: 1000;
+    --z-subs: 1500;
     --z-overlay: 2000;
     --z-loader: 9999;
 }
@@ -314,6 +315,16 @@ html.direct-join #page-loader {
 
 #screen-play-btn.is-idle{
     cursor: none;
+}
+
+.libassjs-canvas-parent {
+    position: absolute !important;
+    top: 0; 
+    left: 0;
+    width: 100% !important;
+    height: 100% !important;
+    z-index: var(--z-subs) !important;
+    pointer-events: none !important;
 }
 
 /* =========================================

@@ -110,6 +110,38 @@ else
 fi
 
 # ==========================================
+# --- 2.5 EXTRACT FONTS (MKV ATTACHMENTS) ---
+# ==========================================
+FONT_DIR="fonts"
+
+# Check if the input file has attachment streams (fonts are usually .ttf or .otf)
+HAS_FONTS=$(ffprobe -loglevel error -select_streams t -show_entries stream=codec_type -of csv=p=0 "$INPUT_PATH" | head -n 1)
+
+if [ -n "$HAS_FONTS" ]; then
+    echo "  -> Custom fonts detected. Extracting..."
+    mkdir -p "$FONT_DIR"
+    
+    cd "$FONT_DIR" || exit
+    
+    if [[ "$INPUT_PATH" = /* ]]; then
+        ABS_INPUT="$INPUT_PATH"
+    else
+        ABS_INPUT="../$INPUT_PATH"
+    fi
+    
+    ffmpeg -loglevel warning -dump_attachment:t "" -i "$ABS_INPUT" -y 2>/dev/null
+    cd ..
+    
+    if [ -z "$(ls -A "$FONT_DIR" 2>/dev/null)" ]; then
+        rm -rf "$FONT_DIR"
+    else
+        echo "    -> Fonts successfully dumped into /$FONT_DIR"
+    fi
+else
+    echo "  -> [SKIPPED] No attached fonts found in MKV."
+fi
+
+# ==========================================
 # --- 3. THUMBNAILS CHECK ---
 # ==========================================
 VTT_FILE="thumbnails.vtt"

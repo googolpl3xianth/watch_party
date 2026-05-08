@@ -515,7 +515,10 @@ export async function setupVideo(filename, startOffset = -1) {
                         }
                     });
 
-                    checkSubtitles(filename, (subType) => {
+                    checkSubtitles(filename, (subData) => {
+                        const subType = subData.type;
+                        const extractedFonts = subData.fonts || [];
+
                         if (subType === 'vtt') {
                             const track = document.createElement('track');
                             track.kind = 'subtitles';
@@ -540,19 +543,30 @@ export async function setupVideo(filename, startOffset = -1) {
 
                             ccIcon.src = "/img/closed-caption-filled.svg";
 
+                            const dynamicFonts = extractedFonts.map(fontName => 
+                                `${basePath}/fonts/${encodeURIComponent(fontName)}`
+                            );
+
                             window.octopusInstance = new SubtitlesOctopus({
                                 video: video,
                                 subUrl: `${basePath}/subtitles.ass`,
                                 workerUrl: '/js/libass/subtitles-octopus-worker.js', 
-                                fonts: ['/fonts/OpenSans-Bold.ttf',
-                                        '/fonts/OpenSans-BoldItalic.ttf',
-                                        '/fonts/OpenSans-Italic.ttf',
-                                        '/fonts/OpenSans-Regular.ttf'],
+                                fallbackFont: '/fonts/OpenSans-Bold.ttf',
+                                fonts: dynamicFonts,
+                                pixelRatio: window.devicePixelRatio || 1,
+                                prescaleFactor: window.devicePixelRatio || 1,
                                 onReady: function () {
                                     console.log("ASS Subtitles loaded via Octopus!");
                                 }
                             });
 
+                            video.addEventListener('loadedmetadata', () => {
+                                setTimeout(() => {
+                                    if (window.octopusInstance) {
+                                        window.octopusInstance.resize(); 
+                                    }
+                                }, 50);
+                            }, { once: true });
                         } else {
                             // --- NO SUBTITLES (or they are permanently burned in) ---
                             ccBtn.style.display = 'none';

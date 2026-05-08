@@ -151,6 +151,39 @@ foreach ($vid in $videoFiles) {
     }
 
     # ==========================================
+    # --- 2.5 EXTRACT FONTS (MKV ATTACHMENTS) ---
+    # ==========================================
+    $fontDir = Join-Path -Path $outDir -ChildPath "fonts"
+    
+    if (-not (Test-Path -LiteralPath $fontDir)) {
+        # Check if the input file has attachment streams (usually fonts)
+        $fontCheckCmd = "ffprobe -loglevel error -select_streams t -show_entries stream=codec_type -of csv=p=0 `"$inputPath`""
+        $hasFonts = (Invoke-Expression $fontCheckCmd) -split '\r?\n' | Select-Object -First 1
+
+        if (![string]::IsNullOrWhiteSpace($hasFonts)) {
+            Write-Host "  -> Custom fonts detected. Extracting..." -ForegroundColor Yellow
+            New-Item -ItemType Directory -Path $fontDir -Force | Out-Null
+            
+            $fontCmd = "ffmpeg -loglevel warning -dump_attachment:t `"`" -i `"$inputPath`" -y"
+            $cmdArgs = "/c pushd `"$fontDir`" && $fontCmd"
+            Start-Process -FilePath "cmd.exe" -ArgumentList $cmdArgs -Wait -NoNewWindow
+            
+            # Check if any fonts were actually extracted
+            $extractedFonts = Get-ChildItem -LiteralPath $fontDir
+            if ($extractedFonts.Count -eq 0) {
+                Write-Host "    -> [WARNING] Extraction failed or stream was empty. Cleaning up." -ForegroundColor Red
+                Remove-Item -LiteralPath $fontDir -Force
+            } else {
+                Write-Host "    -> Fonts successfully dumped into /fonts" -ForegroundColor Green
+            }
+        } else {
+            Write-Host "  -> [SKIPPED] No attached fonts found in MKV." -ForegroundColor DarkGray
+        }
+    } else {
+        Write-Host "  -> [SKIPPED] Fonts already extracted." -ForegroundColor DarkGray
+    }
+
+    # ==========================================
     # --- 3. THUMBNAILS CHECK ---
     # ==========================================
     $vttPath = Join-Path -Path $outDir -ChildPath "thumbnails.vtt"
