@@ -71,11 +71,37 @@ fi
 # ==========================================
 # --- 2. SUBTITLES CHECK ---
 # ==========================================
-if [ ! -f "subtitles.vtt" ]; then
-    SUB_INDEX=$(ffprobe $PROBE_OPTS -select_streams s:m:language:$TARGET_SUB_LANG -show_entries stream=index -of csv=p=0 "$INPUT_PATH" | head -n 1 | tr -d '[:space:]')
-    if [ -n "$SUB_INDEX" ]; then
-        echo "  -> $TARGET_SUB_LANG Subtitles detected at index $SUB_INDEX. Extracting..."
-        ffmpeg -v warning -i "$INPUT_PATH" -map 0:$SUB_INDEX -c:s webvtt "subtitles.vtt" -y
+VTT_OUT="subtitles.vtt"
+ASS_OUT="subtitles.ass"
+
+if [ ! -f "$VTT_OUT" ] && [ ! -f "$ASS_OUT" ]; then
+    SUB_INFO=$(ffprobe $PROBE_OPTS -select_streams s:m:language:$TARGET_SUB_LANG -show_entries stream=index,codec_name -of csv=p=0 "$INPUT_PATH" | head -n 1 | tr -d '[:space:]')
+
+    if [ -n "$SUB_INFO" ]; then
+        SUB_INDEX=$(echo "$SUB_INFO" | cut -d',' -f1)
+        SUB_CODEC=$(echo "$SUB_INFO" | cut -d',' -f2)
+
+        echo "  -> $TARGET_SUB_LANG Subtitles detected (Codec: $SUB_CODEC). Processing..."
+
+        if [[ "$SUB_CODEC" =~ ^(ass|ssa)$ ]]; then
+            echo "    -> Complex formatting detected. Extracting raw ASS..."
+            ffmpeg -v warning -i "$INPUT_PATH" -map 0:$SUB_INDEX -c:s copy "$ASS_OUT" -y
+
+        elif [[ "$SUB_CODEC" =~ ^(hdmv_pgs_subtitle|dvd_subtitle|dvb_subtitle|dvb_teletext|xsub|arib_caption)$ ]]; then
+            echo "    -> [WARNING] Image-based subtitles detected. These must be hardsubbed. Skipping extraction."
+
+        else
+            echo "    -> Standard text format detected. Converting to WebVTT..."
+            ffmpeg -v warning -i "$INPUT_PATH" -map 0:$SUB_INDEX -c:s webvtt "$VTT_OUT" -y
+
+            if [ -f "$VTT_OUT" ]; then
+                echo "    -> Scrubbing formatting artifacts..."
+                sed -i 's/{[^}]*}//g' "$VTT_OUT"
+                sed -i '/^m [-0-9\.]/d' "$VTT_OUT"
+            else
+                echo "    -> [ERROR] FFmpeg could not convert codec '$SUB_CODEC' to WebVTT."
+            fi
+        fi
     else
         echo "  -> No subtitles found in $TARGET_SUB_LANG. Skipping extraction."
     fi

@@ -92,12 +92,21 @@ function checkFileSubtitles(filename, callback){
     const dir = path.dirname(filename); 
     const subPath = path.join('/media/compressed', dir, 'subtitles.vtt');
 
-    fs.access(subPath, fs.constants.F_OK, (err) => {
-        if (err) {
-            callback(false); 
-        } else {
-            callback(true); 
+    const assPath = path.join(basePath, 'subtitles.ass');
+    const vttPath = path.join(basePath, 'subtitles.vtt');
+
+    fs.access(assPath, fs.constants.F_OK, (errAss) => {
+        if (!errAss) {
+            return callback('ass'); 
         }
+
+        fs.access(vttPath, fs.constants.F_OK, (errVtt) => {
+            if (!errVtt) {
+                return callback('vtt'); 
+            }
+            
+            return callback('none'); 
+        });
     });
 }
 

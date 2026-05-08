@@ -470,7 +470,7 @@ export async function setupVideo(filename, startOffset = -1) {
                         if (level.width === 1920) {
                             const mbps = Math.round(level.bitrate / 1000000); 
                             labelName = `1080p (${mbps} Mbps)`;
-                            labelName = `1080p (${mbps} Mbps`
+                            labelName = `1080p (${mbps} Mbps)`;
                             labelName = `1080p (${mbps} Mbps)`;
                         }
                         else if (level.width === 1280) labelName = "720p";
@@ -510,8 +510,8 @@ export async function setupVideo(filename, startOffset = -1) {
                         }
                     });
 
-                    checkSubtitles(filename, (hasSubtitles) => {
-                        if (hasSubtitles) {
+                    checkSubtitles(filename, (subType) => {
+                        if (subType === 'vtt') {
                             const track = document.createElement('track');
                             track.kind = 'subtitles';
                             track.label = 'English';
@@ -528,7 +528,23 @@ export async function setupVideo(filename, startOffset = -1) {
                                     ccBtn.style.opacity = "1";
                                 }
                             });
+                        } else if (subType === 'ass') {
+                            ccBtn.style.display = 'block';
+                            ccBtn.style.color = "#ff0000"; 
+                            ccBtn.style.opacity = "1";
+
+                            window.octopusInstance = new SubtitlesOctopus({
+                                video: video,
+                                subUrl: `${basePath}/subtitles.ass`,
+                                workerUrl: '/js/libass/subtitles-octopus-worker.js', 
+                                fonts: [],
+                                onReady: function () {
+                                    console.log("ASS Subtitles loaded via Octopus!");
+                                }
+                            });
+
                         } else {
+                            // --- NO SUBTITLES (or they are permanently burned in) ---
                             ccBtn.style.display = 'none';
                         }
                     });
