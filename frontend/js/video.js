@@ -243,6 +243,10 @@ export function setupVideoPlayer() {
     });
 
     window.addEventListener('keydown', (e) => {
+        const activeTag = document.activeElement.tagName;
+        if (activeTag === 'INPUT' || activeTag === 'TEXTAREA') {
+            return; 
+        }
         if ([" ", "ArrowLeft", "ArrowRight"].includes(e.key)) {
             e.preventDefault();
         }
