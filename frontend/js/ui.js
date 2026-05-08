@@ -18,6 +18,10 @@ const joinGate = document.getElementById('join-gate');
 const joinBtn = document.getElementById('join-btn');
 const uploadArea = document.getElementById('upload-area');
 const uploadBtn = document.getElementById('open-upload-modal-btn')
+const modalOverlay = document.getElementById('username-modal-overlay');
+const usernameInput = document.getElementById('custom-username-input');
+const submitBtn = document.getElementById('submit-username-btn');
+const cancelBtn = document.getElementById('cancel-username-btn');
 
 export function setupLobbyUI(){
     document.getElementById('page-loader').style.display = 'none';
@@ -51,6 +55,12 @@ export function setupRoomUI() {
     document.getElementById('role-change-admin').addEventListener('click', () => {submitRoleChange('admin')});
     document.getElementById('role-change-guest').addEventListener('click', () => {submitRoleChange('guest')});
     document.getElementById('rename-btn').addEventListener('click', rename);
+    submitBtn.addEventListener('click', handleNameSubmit);
+    cancelBtn.addEventListener('click', closeNameModal);
+
+    usernameInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') handleNameSubmit();
+    });
 
     joinBtn.onclick = async () => {
         State.hasJoined = true;	
@@ -387,14 +397,36 @@ function openUpload(){
     }
 }
 
-function rename(){
-    let username = window.prompt("What's your username?");
-    if (username) {
-        usernameHeader.innerText = `Name: ${username}`;
-        updateUser(socket.id, username, null);
-        localStorage.setItem('watchPartyUsername', username);
+export function rename() {
+    modalOverlay.style.display = 'flex';
+    usernameInput.value = ''; 
+    usernameInput.focus();
+    
+    if (typeof userMenu !== 'undefined') {
+        userMenu.classList.remove('visible');
     }
-    userMenu.classList.remove('visible');
+}
+
+function handleNameSubmit() {
+    let newName = usernameInput.value.trim();
+    
+    if (newName.length > 0) {
+        if (newName.length > 20) newName = newName.slice(0, 20);
+        
+        usernameHeader.innerText = `Name: ${newName}`;
+        updateUser(socket.id, newName, null);
+        localStorage.setItem('watchPartyUsername', newName);
+        
+        modalOverlay.style.display = 'none';
+        usernameInput.style.borderColor = '#333';
+    } else {
+        usernameInput.style.borderColor = 'var(--error-color)';
+    }
+}
+
+function closeNameModal() {
+    modalOverlay.style.display = 'none';
+    usernameInput.style.borderColor = '#333';
 }
 
 function getUserList() {

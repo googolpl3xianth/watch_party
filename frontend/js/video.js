@@ -459,61 +459,61 @@ export async function setupVideo(filename, startOffset = -1) {
 
                     if (hls.levels.length <= 1) {
                         qualitySelector.style.display = 'none';
-                        return; 
                     }
+                    else{
+                        qualitySelector.style.display = 'inline-block';
 
-                    qualitySelector.style.display = 'inline-block';
-
-                    qualitySelector.innerHTML = '';
-                    
-                    hls.levels.forEach((level, index) => {
-                        const option = document.createElement('option');
-                        option.value = index; 
-
-                        let labelName = `${level.height}p`;
-
-                        if (level.width === 1920) {
-                            const mbps = Math.round(level.bitrate / 1000000); 
-                            labelName = `1080p (${mbps} Mbps)`;
-                            labelName = `1080p (${mbps} Mbps)`;
-                            labelName = `1080p (${mbps} Mbps)`;
-                        }
-                        else if (level.width === 1280) labelName = "720p";
-                        else if (level.width === 854) labelName = "480p";
-
-                        option.textContent = labelName; 
-                        option.style.color = 'black'; 
-                        qualitySelector.appendChild(option);
-                    });
-
-                    let startingQuality = -1;
-
-                    if (State.targetQuality !== undefined) {
-                        if (State.targetQuality === -2) {
-                            startingQuality = hls.levels.length - 1; 
-                        } else {
-                            startingQuality = State.targetQuality;
-                        }
-                    }
-
-                    if (startingQuality !== -1) {
-                        hls.currentLevel = startingQuality;
-                        hls.nextLoadLevel = startingQuality;
-                    }
-
-                    qualitySelector.value = startingQuality;
-
-                    qualitySelector.addEventListener('change', (e) => {
-                        const newLevel = parseInt(e.target.value);
-
-                        hls.currentLevel = newLevel;
-                        hls.nextLoadLevel = newLevel;
-                        qualitySelector.value = newLevel
+                        qualitySelector.innerHTML = '';
                         
-                        if (State.sync_perm) {
-                            emitQualityChange(newLevel);
+                        hls.levels.forEach((level, index) => {
+                            const option = document.createElement('option');
+                            option.value = index; 
+
+                            let labelName = `${level.height}p`;
+
+                            if (level.width === 1920) {
+                                const mbps = Math.round(level.bitrate / 1000000); 
+                                labelName = `1080p (${mbps} Mbps)`;
+                                labelName = `1080p (${mbps} Mbps)`;
+                                labelName = `1080p (${mbps} Mbps)`;
+                            }
+                            else if (level.width === 1280) labelName = "720p";
+                            else if (level.width === 854) labelName = "480p";
+
+                            option.textContent = labelName; 
+                            option.style.color = 'black'; 
+                            qualitySelector.appendChild(option);
+                        });
+
+                        let startingQuality = -1;
+
+                        if (State.targetQuality !== undefined) {
+                            if (State.targetQuality === -2) {
+                                startingQuality = hls.levels.length - 1; 
+                            } else {
+                                startingQuality = State.targetQuality;
+                            }
                         }
-                    });
+
+                        if (startingQuality !== -1) {
+                            hls.currentLevel = startingQuality;
+                            hls.nextLoadLevel = startingQuality;
+                        }
+
+                        qualitySelector.value = startingQuality;
+
+                        qualitySelector.addEventListener('change', (e) => {
+                            const newLevel = parseInt(e.target.value);
+
+                            hls.currentLevel = newLevel;
+                            hls.nextLoadLevel = newLevel;
+                            qualitySelector.value = newLevel
+                            
+                            if (State.sync_perm) {
+                                emitQualityChange(newLevel);
+                            }
+                        });
+                    }
 
                     checkSubtitles(filename, (subData) => {
                         const subType = subData.type;
@@ -556,7 +556,7 @@ export async function setupVideo(filename, startOffset = -1) {
                                 pixelRatio: window.devicePixelRatio || 1,
                                 prescaleFactor: window.devicePixelRatio || 1,
                                 onReady: function () {
-                                    console.log("ASS Subtitles loaded via Octopus!");
+                                    //console.log("ASS Subtitles loaded via Octopus!");
                                 }
                             });
 

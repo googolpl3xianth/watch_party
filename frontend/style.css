@@ -176,6 +176,49 @@ html.direct-join #page-loader {
 }
 
 /* =========================================
+   CUSTOM MODALS
+   ========================================= */
+#username-modal-overlay {
+    position: fixed;
+    top: 0; left: 0; width: 100%; height: 100%;
+    background: rgba(0, 0, 0, 0.8);
+    display: none; /* Hidden by default */
+    align-items: center;
+    justify-content: center;
+    z-index: var(--z-overlay);
+    backdrop-filter: blur(3px); /* Optional: adds a nice modern blur */
+}
+
+.username-modal {
+    background: var(--bg-card);
+    padding: 30px;
+    border-radius: var(--border-radius);
+    box-shadow: 0 10px 40px rgba(0,0,0,0.8);
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    width: 90%;
+    max-width: 320px;
+    text-align: center;
+}
+
+#custom-username-input {
+    padding: 12px;
+    border-radius: var(--border-radius);
+    border: 2px solid #333;
+    background: var(--bg-main);
+    color: var(--text-primary);
+    text-align: center;
+    font-size: 1.1rem;
+    outline: none;
+    transition: border-color 0.2s;
+}
+
+#custom-username-input:focus { 
+    border-color: var(--text-primary); 
+}
+
+/* =========================================
    3. ROOM INTERFACE & HEADER
    ========================================= */
 #room-interface {
