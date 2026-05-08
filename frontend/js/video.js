@@ -537,7 +537,10 @@ export async function setupVideo(filename, startOffset = -1) {
                                 video: video,
                                 subUrl: `${basePath}/subtitles.ass`,
                                 workerUrl: '/js/libass/subtitles-octopus-worker.js', 
-                                fonts: [],
+                                fonts: ['/fonts/OpenSans-Bold.ttf',
+                                        '/fonts/OpenSans-BoldItalic.ttf',
+                                        '/fonts/OpenSans-Italic.ttf',
+                                        '/fonts/OpenSans-Regular.ttf'],
                                 onReady: function () {
                                     console.log("ASS Subtitles loaded via Octopus!");
                                 }
