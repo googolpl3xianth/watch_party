@@ -66,21 +66,26 @@ foreach ($vid in $videoFiles) {
             Write-Host "    -> Target audio ($targetAudioLang) missing. Falling back to default track." -ForegroundColor Yellow
         }
 
-        $segmentFileName = "chunk_%v_%03d.m4s"
-        $initFileName = "init_%v.mp4"
-        $playlistFileName = "playlist_%v.m3u8"
-        $masterPlaylistName = "master.m3u8"
+        $segmentFileName = "chunk_%03d.m4s"
+        $initFileName = "initv.mp4"
 
         $ffmpegArgs = @(
             "-loglevel", "warning",
             "-fflags", "+genpts",   
             "-i", "`"$inputPath`"",
-            "-filter_complex", "`"[0:v]split=3[v1][v2][v3];[v1]scale=1920:-2,format=yuv420p[v1out];[v2]scale=1920:-2,format=yuv420p[v2out];[v3]scale=1920:-2,format=yuv420p[v3out]`"",
-            "-map", "`"[v3out]`"", "-c:v:0", "h264_nvenc", "-b:v:0", "8000k", "-maxrate:v:0", "9000k", "-bufsize:v:0", "18000k", "-g", "48", "-no-scenecut", "1",
-            "-map", "`"[v2out]`"", "-c:v:1", "h264_nvenc", "-b:v:1", "14000k", "-maxrate:v:1", "16000k", "-bufsize:v:1", "32000k", "-g", "48", "-no-scenecut", "1",
-            "-map", "`"[v1out]`"", "-c:v:2", "h264_nvenc", "-b:v:2", "24000k", "-maxrate:v:2", "28000k", "-bufsize:v:2", "56000k", "-g", "48", "-no-scenecut", "1",
 
+            "-vf", "scale=1920:-2,format=yuv420p",
+
+            "-c:v", "h264_nvenc",
+            "-profile:v", "high", "-level", "4.1",
+            "-b:v", "8000k", "-maxrate:v", "9000k", "-bufsize:v", "18000k",
+            "-g", "48", "-no-scenecut", "1",
+
+            "-flags", "+global_header",
+
+            "-map", "0:v:0",
             "-map", "$audioMap", "-c:a", "aac", "-b:a", "192k", "-ac", "2",
+
             "-fps_mode", "cfr",
             "-video_track_timescale", "90000",
             "-max_muxing_queue_size", "1024",
@@ -90,11 +95,9 @@ foreach ($vid in $videoFiles) {
             "-hls_segment_type", "fmp4",
             "-avoid_negative_ts", "make_non_negative",
             
-            "-var_stream_map", "`"v:0,agroup:audio v:1,agroup:audio v:2,agroup:audio a:0,agroup:audio,default:yes`"",
-            "-master_pl_name", "`"$masterPlaylistName`"",
             "-hls_segment_filename", "`"$segmentFileName`"",
             "-hls_fmp4_init_filename", "`"$initFileName`"",
-            "`"$playlistFileName`""
+            "`"master.m3u8`""
         )
             
         $ffCommand = "ffmpeg " + ($ffmpegArgs -join " ")

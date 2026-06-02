@@ -41,29 +41,18 @@ if [ ! -f "master.m3u8" ]; then
     fi
 
     # Probe and Encode Video
-    VIDEO_CODEC=$(ffprobe -v error -select_streams v:0 -show_entries stream=codec_name -of default=noprint_wrappers=1:nokey=1 "$INPUT_PATH" | tr -d '[:space:]')
-    if [ "$VIDEO_CODEC" = "h264" ]; then
-        echo "    -> H.264 Video detected! Initiating 10-second REMUX..."
-        ffmpeg -i "$INPUT_PATH" \
-        -c:v copy \
-        -map 0:v:0 -map "$AUDIO_MAP" -c:a aac -b:a 192k -ac 2 -threads 0 \
-        -f hls -hls_time "$CHUNK_SIZE" -hls_playlist_type vod -hls_segment_type fmp4 \
-        -avoid_negative_ts make_non_negative -max_muxing_queue_size 1024 \
-        -hls_segment_filename "chunk_%03d.m4s" \
-        -hls_fmp4_init_filename "init.mp4" \
-        "master.m3u8"
-    else
-        echo "    -> Heavy Codec ($VIDEO_CODEC) detected. Initiating Fast GPU TRANSCODE..."
-        ffmpeg -fflags +genpts -i "$INPUT_PATH" \
-        -c:v h264_nvenc -pix_fmt yuv420p -b:v 8000k -maxrate:v 9000k -bufsize:v 18000k -g 48 -no-scenecut 1 \
-        -map 0:v:0 -map "$AUDIO_MAP" -c:a aac -b:a 192k -ac 2 \
-        -fps_mode cfr -max_muxing_queue_size 1024 \
-        -f hls -hls_time "$CHUNK_SIZE" -hls_playlist_type vod -hls_segment_type fmp4 \
-        -avoid_negative_ts make_non_negative \
-        -hls_segment_filename "chunk_%03d.m4s" \
-        -hls_fmp4_init_filename "init.mp4" \
-        "master.m3u8"
-    fi
+    ffmpeg -fflags +genpts -i "$INPUT_PATH" \
+    -vf "scale=1920:-2,format=yuv420p" \
+    -c:v h264_nvenc -profile:v high -level 4.1 \
+    -b:v 8000k -maxrate:v 9000k -bufsize:v 18000k \
+    -g 48 -no-scenecut 1 \
+    -map 0:v:0 -map "$AUDIO_MAP" -c:a aac -b:a 192k -ac 2 \
+    -fps_mode cfr -max_muxing_queue_size 1024 \
+    -f hls -hls_time "$CHUNK_SIZE" -hls_playlist_type vod -hls_segment_type fmp4 \
+    -avoid_negative_ts make_non_negative \
+    -hls_segment_filename "chunk_%03d.m4s" \
+    -hls_fmp4_init_filename "init.mp4" \
+    "master.m3u8"
 else
     echo "  -> [SKIPPED] Video streams already converted."
 fi
