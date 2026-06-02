@@ -3,7 +3,7 @@ const { sanitize, checkFileSubtitles, deleteRoomVideo } = require('../utils/util
 const db = require('../db/queries');
 require('dotenv').config(); 
 
-const SWARM_THRESHOLD = 3;
+const SWARM_THRESHOLD = 2;
 
 module.exports = function(io, socket) {
 
