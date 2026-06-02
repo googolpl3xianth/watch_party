@@ -670,13 +670,11 @@ export function executeSync(data) {
     } else if (data.type === 'pause') {
         video.pause();
         overlay.classList.remove('hidden');
-        overlayIcon.innerHTML = '⏸️';
         overlayText.innerText = 'Paused by Host';
     } else if (data.type === 'buffer') {
         video.pause();
         videoLoader.classList.add('visible');
         overlay.classList.remove('hidden');
-        overlayIcon.innerHTML = '⏳'; 
         overlayText.innerText = 'Waiting for players to buffer...';
     }
 }

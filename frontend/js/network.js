@@ -56,8 +56,16 @@ export function initializeNetwork(){
     });
 
     socket.on('kicked-from-room', () => {
+        if (window.hls && window.hls.p2pEngine) {
+            window.hls.p2pEngine.destroy();
+        }
+        
+        if (window.hls) {
+            window.hls.destroy();
+        }
+
         alert("You have been removed from the room by the Host.");
-        window.location.href = '/'; 
+        window.location.href = '/';
     });
 }
 

@@ -52,8 +52,9 @@ export function setupRoomUI() {
     userCountBtn.addEventListener('click', getUserList);
     document.getElementById('kick-btn').addEventListener('click', (event) => {
         if (confirm("Are you sure you want to kick this user?")) {
-            kickUser(targetSocketId);
-            contextMenu.style.display = 'none';
+            const targetId = userMenu.getAttribute('data-target-id');
+            kickUser(targetId);
+            userMenu.classList.remove('visible');
         }
     });
     document.getElementById('change-role-btn').addEventListener('click', (event) => {getRoleList(event)});

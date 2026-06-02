@@ -218,12 +218,11 @@ module.exports = function(io, socket) {
 
     socket.on('request-kick', (targetSocketId) => {
         const room = activeRooms[socket.data.currentRoomId];
-        if (room && room.host === socket.id) {
+        if (room && room.host === socket.id && targetSocketId) {
             io.to(targetSocketId).emit('kicked-from-room');
             
             const targetSocket = io.sockets.sockets.get(targetSocketId);
             if (targetSocket) {
-                targetSocket.leave(socket.roomId);
                 targetSocket.disconnect(true);
             }
         }
