@@ -360,6 +360,10 @@ html.direct-join #page-loader {
 }
 
 .libassjs-canvas-parent {
+    will-change: transform;
+    transform: translateZ(0);
+    -webkit-transform: translateZ(0);
+
     position: absolute !important;
     top: 0; 
     left: 0;
@@ -367,6 +371,13 @@ html.direct-join #page-loader {
     height: 100% !important;
     z-index: var(--z-subs) !important;
     pointer-events: none !important;
+    contain: strict;
+}
+
+.libassjs-canvas-parent canvas {
+    will-change: transform;
+    transform: translateZ(0);
+    -webkit-transform: translateZ(0);
 }
 
 /* =========================================
