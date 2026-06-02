@@ -1,9 +1,10 @@
+// /backend/sockets/roomHandler.js
 const { activeRooms, creationSpamFilter, roomSpamTimer } = require('../store');
 const { sanitize, checkFileSubtitles, deleteRoomVideo } = require('../utils/utils');
 const db = require('../db/queries');
 require('dotenv').config(); 
 
-export const SWARM_THRESHOLD = 2;
+const SWARM_THRESHOLD = 2;
 
 module.exports = function(io, socket) {
 
@@ -279,3 +280,5 @@ module.exports = function(io, socket) {
         }
     });
 };
+
+module.exports.SWARM_THRESHOLD = SWARM_THRESHOLD;
