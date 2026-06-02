@@ -74,8 +74,9 @@
         </aside>
 
         <nav id="userMenu" class="context-menu" aria-label="User Actions">
-            <button id="change-role-btn" class="context-item perms-only" aria-label="change rolebutton">change permissions</button>
+            <button id="change-role-btn" class="context-item perms-only" aria-label="change role button">change permissions</button>
             <button id="rename-btn" class="context-item" aria-label="rename button">rename</button>
+            <button id="kick-btn" class="context-item host-only" aria-label="kick button">kick</button>
             
             <div id="role-menu" class="context-menu">
                 <button id="role-change-host" class="context-item host-only" aria-label="Change to host">host</button>
@@ -109,7 +110,10 @@
 
             <video id="myVideo" playsinline controls crossorigin="anonymous" preload="auto"></video>
 
-            <button id="screen-play-btn" class="perms-only" aria-label="Play or Pause"></button>
+            <div id="video-overlay-state" class="hidden">
+                <div id="video-overlay-icon"></div>
+                <div id="video-overlay-text"></div>
+            </div>
 
             <figcaption id="custom-controls" class="video-overlay">
                 <button id="play-pause-btn" class="control-btn perms-only" aria-label="Play or Pause">

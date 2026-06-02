@@ -1,4 +1,4 @@
-
+const { SWARM_THRESHOLD } = require('./roomHandler.js')
 const { activeRooms } = require('../store');
 
 module.exports = function(io, socket) {
@@ -62,15 +62,26 @@ module.exports = function(io, socket) {
 
     // buffering logic
     socket.on('client-buffering', () => {
-        if (socket.data.currentRoomId && activeRooms[socket.data.currentRoomId]) {
-            activeRooms[socket.data.currentRoomId].bufferingUsers.add(socket.id);
-            if (activeRooms[socket.data.currentRoomId].status !== 'pause') {
-                activeRooms[socket.data.currentRoomId].status = 'buffer';
-                io.to(socket.data.currentRoomId).emit('apply-sync', {
-                    type: activeRooms[socket.data.currentRoomId].status,
-                    time: activeRooms[socket.data.currentRoomId].currentTime
+        const roomId = socket.data.currentRoomId;
+        if (roomId && activeRooms[roomId]) {
+            const room = activeRooms[roomId];
+            const user = room.users[socket.id];
+
+            const threshold = room.p2pThreshold || SWARM_THRESHOLD; 
+            const isRoomP2P = Object.keys(room.users).length >= threshold;
+
+            if (isRoomP2P && user && !user.inSwarm) {
+                return; 
+            }
+
+            room.bufferingUsers.add(socket.id);
+            if (room.status !== 'pause') {
+                room.status = 'buffer';
+                io.to(roomId).emit('apply-sync', {
+                    type: room.status,
+                    time: room.currentTime
                 });
-                io.to(socket.data.currentRoomId).emit('bufferingList', [...activeRooms[socket.data.currentRoomId].bufferingUsers]);
+                io.to(roomId).emit('bufferingList', [...room.bufferingUsers]);
             }
         }
     });

@@ -3,7 +3,7 @@ const { sanitize, checkFileSubtitles, deleteRoomVideo } = require('../utils/util
 const db = require('../db/queries');
 require('dotenv').config(); 
 
-const SWARM_THRESHOLD = 2;
+export const SWARM_THRESHOLD = 2;
 
 module.exports = function(io, socket) {
 
@@ -212,6 +212,19 @@ module.exports = function(io, socket) {
             
             io.to(socket.data.currentRoomId).emit('switch-permission', finalID, targetUsername, targetRole);
             io.to(socket.data.currentRoomId).emit('update-user-list', activeRooms[socket.data.currentRoomId].users);
+        }
+    });
+
+    socket.on('request-kick', (targetSocketId) => {
+        const room = activeRooms[socket.data.currentRoomId];
+        if (room && room.host === socket.id) {
+            io.to(targetSocketId).emit('kicked-from-room');
+            
+            const targetSocket = io.sockets.sockets.get(targetSocketId);
+            if (targetSocket) {
+                targetSocket.leave(socket.roomId);
+                targetSocket.disconnect(true);
+            }
         }
     });
 
