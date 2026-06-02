@@ -243,6 +243,10 @@ export function setupVideoPlayer() {
     });
 
     window.addEventListener('keydown', (e) => {
+        const activeTag = document.activeElement.tagName;
+        if (activeTag === 'INPUT' || activeTag === 'TEXTAREA') {
+            return; 
+        }
         if ([" ", "ArrowLeft", "ArrowRight"].includes(e.key)) {
             e.preventDefault();
         }
@@ -334,6 +338,11 @@ export async function setupVideo(filename, startOffset = -1) {
             }
 	        hls.destroy(); 
 	        hls = null; 
+        }
+
+        if (window.octopusInstance) {
+            window.octopusInstance.dispose();
+            window.octopusInstance = null;
         }
 
         const trackElement = video.querySelector('track[kind="subtitles"]');
@@ -454,64 +463,67 @@ export async function setupVideo(filename, startOffset = -1) {
 
                     if (hls.levels.length <= 1) {
                         qualitySelector.style.display = 'none';
-                        return; 
                     }
+                    else{
+                        qualitySelector.style.display = 'inline-block';
 
-                    qualitySelector.style.display = 'inline-block';
-
-                    qualitySelector.innerHTML = '';
-                    
-                    hls.levels.forEach((level, index) => {
-                        const option = document.createElement('option');
-                        option.value = index; 
-
-                        let labelName = `${level.height}p`;
-
-                        if (level.width === 1920) {
-                            const mbps = Math.round(level.bitrate / 1000000); 
-                            labelName = `1080p (${mbps} Mbps)`;
-                            labelName = `1080p (${mbps} Mbps`
-                            labelName = `1080p (${mbps} Mbps)`;
-                        }
-                        else if (level.width === 1280) labelName = "720p";
-                        else if (level.width === 854) labelName = "480p";
-
-                        option.textContent = labelName; 
-                        option.style.color = 'black'; 
-                        qualitySelector.appendChild(option);
-                    });
-
-                    let startingQuality = -1;
-
-                    if (State.targetQuality !== undefined) {
-                        if (State.targetQuality === -2) {
-                            startingQuality = hls.levels.length - 1; 
-                        } else {
-                            startingQuality = State.targetQuality;
-                        }
-                    }
-
-                    if (startingQuality !== -1) {
-                        hls.currentLevel = startingQuality;
-                        hls.nextLoadLevel = startingQuality;
-                    }
-
-                    qualitySelector.value = startingQuality;
-
-                    qualitySelector.addEventListener('change', (e) => {
-                        const newLevel = parseInt(e.target.value);
-
-                        hls.currentLevel = newLevel;
-                        hls.nextLoadLevel = newLevel;
-                        qualitySelector.value = newLevel
+                        qualitySelector.innerHTML = '';
                         
-                        if (State.sync_perm) {
-                            emitQualityChange(newLevel);
-                        }
-                    });
+                        hls.levels.forEach((level, index) => {
+                            const option = document.createElement('option');
+                            option.value = index; 
 
-                    checkSubtitles(filename, (hasSubtitles) => {
-                        if (hasSubtitles) {
+                            let labelName = `${level.height}p`;
+
+                            if (level.width === 1920) {
+                                const mbps = Math.round(level.bitrate / 1000000); 
+                                labelName = `1080p (${mbps} Mbps)`;
+                                labelName = `1080p (${mbps} Mbps)`;
+                                labelName = `1080p (${mbps} Mbps)`;
+                            }
+                            else if (level.width === 1280) labelName = "720p";
+                            else if (level.width === 854) labelName = "480p";
+
+                            option.textContent = labelName; 
+                            option.style.color = 'black'; 
+                            qualitySelector.appendChild(option);
+                        });
+
+                        let startingQuality = -1;
+
+                        if (State.targetQuality !== undefined) {
+                            if (State.targetQuality === -2) {
+                                startingQuality = hls.levels.length - 1; 
+                            } else {
+                                startingQuality = State.targetQuality;
+                            }
+                        }
+
+                        if (startingQuality !== -1) {
+                            hls.currentLevel = startingQuality;
+                            hls.nextLoadLevel = startingQuality;
+                        }
+
+                        qualitySelector.value = startingQuality;
+
+                        qualitySelector.addEventListener('change', (e) => {
+                            const newLevel = parseInt(e.target.value);
+
+                            hls.currentLevel = newLevel;
+                            hls.nextLoadLevel = newLevel;
+                            qualitySelector.value = newLevel
+                            
+                            if (State.sync_perm) {
+                                emitQualityChange(newLevel);
+                            }
+                        });
+                    }
+
+                    checkSubtitles(filename, (subData) => {
+                        const subType = subData.type;
+                        const extractedFonts = subData.fonts || [];
+
+                        if (subType === 'vtt') {
                             const track = document.createElement('track');
                             track.kind = 'subtitles';
                             track.label = 'English';
@@ -528,7 +540,39 @@ export async function setupVideo(filename, startOffset = -1) {
                                     ccBtn.style.opacity = "1";
                                 }
                             });
+                        } else if (subType === 'ass') {
+                            ccBtn.style.display = 'block';
+                            ccBtn.style.color = "#ff0000"; 
+                            ccBtn.style.opacity = "1";
+
+                            ccIcon.src = "/img/closed-caption-filled.svg";
+
+                            const dynamicFonts = extractedFonts.map(fontName => 
+                                `${basePath}/fonts/${encodeURIComponent(fontName)}`
+                            );
+
+                            window.octopusInstance = new SubtitlesOctopus({
+                                video: video,
+                                subUrl: `${basePath}/subtitles.ass`,
+                                workerUrl: '/js/libass/subtitles-octopus-worker.js', 
+                                fallbackFont: '/fonts/OpenSans-Bold.ttf',
+                                fonts: dynamicFonts,
+                                pixelRatio: window.devicePixelRatio || 1,
+                                prescaleFactor: window.devicePixelRatio || 1,
+                                onReady: function () {
+                                    //console.log("ASS Subtitles loaded via Octopus!");
+                                }
+                            });
+
+                            video.addEventListener('loadedmetadata', () => {
+                                setTimeout(() => {
+                                    if (window.octopusInstance) {
+                                        window.octopusInstance.resize(); 
+                                    }
+                                }, 50);
+                            }, { once: true });
                         } else {
+                            // --- NO SUBTITLES (or they are permanently burned in) ---
                             ccBtn.style.display = 'none';
                         }
                     });
@@ -672,18 +716,31 @@ function toggleMute(){
 }
 
 function toggleSubtitles() {
-    const textTracks = video.textTracks;
-    if (textTracks.length > 0) {
-        const track = textTracks[0];
+    if (video.textTracks.length > 0) {
+        const track = video.textTracks[0];
         if (track.mode === 'showing') {
             track.mode = 'hidden';
-            ccIcon.src = "/img/closed-caption.svg"
+            ccIcon.src = "/img/closed-caption.svg";
             ccBtn.style.opacity = "0.5";    
-        } 
-        else {
+        } else {
             track.mode = 'showing';
-            ccIcon.src = "/img/closed-caption-filled.svg"
+            ccIcon.src = "/img/closed-caption-filled.svg";
             ccBtn.style.opacity = "1"; 
+        }
+    } 
+    else if (window.octopusInstance) {
+        const octopusCanvas = document.querySelector('.libassjs-canvas-parent') || window.octopusInstance.canvasParent;
+        
+        if (octopusCanvas) {
+            if (octopusCanvas.style.display === 'none') {
+                octopusCanvas.style.display = 'block';
+                ccIcon.src = "/img/closed-caption-filled.svg";
+                ccBtn.style.opacity = "1";
+            } else {
+                octopusCanvas.style.display = 'none';
+                ccIcon.src = "/img/closed-caption.svg";
+                ccBtn.style.opacity = "0.5";
+            }
         }
     }
 }

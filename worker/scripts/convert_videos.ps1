@@ -107,29 +107,77 @@ foreach ($vid in $videoFiles) {
     # ==========================================
     # --- 2. SUBTITLES CHECK ---
     # ==========================================
-    $subPath = Join-Path -Path $outDir -ChildPath "subtitles.vtt"
+    $subPathVTT = Join-Path -Path $outDir -ChildPath "subtitles.vtt"
+    $subPathASS = Join-Path -Path $outDir -ChildPath "subtitles.ass"
     
-    if (-not (Test-Path -LiteralPath $subPath)) {
-        $subCheckCmd = "ffprobe -v error -select_streams s:m:language:$targetSubLang -show_entries stream=index -of csv=p=0 `"$inputPath`""
-        $subIndexes = (Invoke-Expression $subCheckCmd) -join "`n"
+    if (-not (Test-Path -LiteralPath $subPathVTT) -and -not (Test-Path -LiteralPath $subPathASS)) {
+        $subCheckCmd = "ffprobe -v error -select_streams s:m:language:$targetSubLang -show_entries stream=index,codec_name -of csv=p=0 `"$inputPath`""
+        $subInfo = (Invoke-Expression $subCheckCmd) -split '\r?\n' | Select-Object -First 1
 
-        if (![string]::IsNullOrWhiteSpace($subIndexes)) {
-            Write-Host "  -> $targetSubLang Subtitles detected but missing in output. Extracting..." -ForegroundColor Yellow
-            $firstSubIndex = ($subIndexes -split '\r?\n')[0].Trim()
-            
-            $subCmd = "ffmpeg -v warning -i `"$inputPath`" -map 0:$firstSubIndex -c:s webvtt `"$subPath`" -y"
-            Invoke-Expression $subCmd
+        if (![string]::IsNullOrWhiteSpace($subInfo)) {
+            $parts = $subInfo -split ','
+            $firstSubIndex = $parts[0].Trim()
+            $subCodec = $parts[1].Trim()
 
-            Write-Host "    -> Scrubbing ASS formatting..." -ForegroundColor DarkGray
-            $vttText = Get-Content -LiteralPath $subPath -Raw
-            $vttText = $vttText -replace '\{.*?\}', ''
-            $vttText = $vttText -replace '(?m)^m\s+[-0-9\.].*$', ''
-            $vttText | Set-Content -LiteralPath $subPath -Encoding utf8
+            Write-Host "  -> $targetSubLang Subtitles detected (Codec: $subCodec). Processing..." -ForegroundColor Yellow
+            if ($subCodec -match "^(ass|ssa)$") {
+                Write-Host "    -> Complex formatting detected. Extracting raw ASS..." -ForegroundColor DarkGray
+                $subCmd = "ffmpeg -v warning -i `"$inputPath`" -map 0:$firstSubIndex -c:s copy `"$subPathASS`" -y"
+                Invoke-Expression $subCmd
+
+            } elseif ($subCodec -match "^(hdmv_pgs_subtitle|dvd_subtitle|dvb_subtitle|dvb_teletext|xsub|arib_caption)$") {
+                Write-Host "    -> [WARNING] Image-based subtitles detected ($subCodec). These must be hardsubbed. Skipping extraction." -ForegroundColor Red
+
+            } else {
+                Write-Host "    -> Standard text format detected ($subCodec). Converting to WebVTT..." -ForegroundColor DarkGray
+                $subCmd = "ffmpeg -v warning -i `"$inputPath`" -map 0:$firstSubIndex -c:s webvtt `"$subPathVTT`" -y"
+                Invoke-Expression $subCmd
+
+                if (Test-Path -LiteralPath $subPathVTT) {
+                    Write-Host "    -> Scrubbing formatting artifacts..." -ForegroundColor DarkGray
+                    $vttText = Get-Content -LiteralPath $subPathVTT -Raw -Encoding UTF8
+                    $vttText = $vttText -replace '\{.*?\}', '' 
+                    $vttText = $vttText -replace '(?m)^m\s+[-0-9\.].*$', ''
+                    $vttText | Set-Content -LiteralPath $subPathVTT -Encoding UTF8
+                } else {
+                    Write-Host "    -> [ERROR] FFmpeg could not convert codec '$subCodec' to WebVTT." -ForegroundColor Red
+                }
+            }
         } else {
             Write-Host "  -> No subtitles found in source video. Skipping." -ForegroundColor DarkGray
         }
     } else {
         Write-Host "  -> [SKIPPED] Subtitles already extracted." -ForegroundColor DarkGray
+    }
+
+    # ==========================================
+    # --- 2.5 EXTRACT FONTS (MKV ATTACHMENTS) ---
+    # ==========================================
+    $fontDir = Join-Path -Path $outDir -ChildPath "fonts"
+    
+    if (-not (Test-Path -LiteralPath $fontDir)) {
+        $fontCheckCmd = "ffprobe -loglevel error -select_streams t -show_entries stream=codec_type -of csv=p=0 `"$inputPath`""
+        $hasFonts = (Invoke-Expression $fontCheckCmd) -split '\r?\n' | Select-Object -First 1
+
+        if (![string]::IsNullOrWhiteSpace($hasFonts)) {
+            Write-Host "  -> Custom fonts detected. Extracting..." -ForegroundColor Yellow
+            New-Item -ItemType Directory -Path $fontDir -Force | Out-Null
+            
+            $fontCmd = "ffmpeg -dump_attachment:t `"`" -i `"$inputPath`" -y 2>NUL"
+            $cmdArgs = "/c pushd `"$fontDir`" && $fontCmd"
+            Start-Process -FilePath "cmd.exe" -ArgumentList $cmdArgs -Wait -NoNewWindow
+            
+            $extractedFonts = Get-ChildItem -LiteralPath $fontDir
+            if ($extractedFonts.Count -eq 0) {
+                Remove-Item -LiteralPath $fontDir -Force
+            } else {
+                Write-Host "    -> Fonts successfully dumped into /fonts" -ForegroundColor Green
+            }
+        } else {
+            Write-Host "  -> [SKIPPED] No attached fonts found in MKV." -ForegroundColor DarkGray
+        }
+    } else {
+        Write-Host "  -> [SKIPPED] Fonts already extracted." -ForegroundColor DarkGray
     }
 
     # ==========================================
