@@ -43,7 +43,7 @@ if [ ! -f "master.m3u8" ]; then
     # Probe and Encode Video
     ffmpeg -fflags +genpts -i "$INPUT_PATH" \
     -vf "scale=1920:-2,format=yuv420p" \
-    -c:v libx264 -preset fast -profile:v high -level 4.1 \
+    -c:v h264_nvenc -profile:v high -level 4.1 \
     -b:v 8000k -maxrate:v 9000k -bufsize:v 18000k \
     -g 48 -no-scenecut 1 \
     -map 0:v:0 -map "$AUDIO_MAP" -c:a aac -b:a 192k -ac 2 \

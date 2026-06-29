@@ -311,7 +311,6 @@ export async function setupVideo(filename, startOffset = -1) {
     const targetMode = shouldBeP2P ? 'p2p' : 'standard';
 
     if (State.currentCurrentFilename === filename && hls !== null) {
-        // Instead of checking the player object, check our explicit tracker!
         if (currentVideoMode === targetMode) {
             //console.log(`[SYSTEM] Video already in ${targetMode} mode. Aborting duplicate build.`);
             return; 
@@ -358,8 +357,11 @@ export async function setupVideo(filename, startOffset = -1) {
 
         const cleanName = filename.replace(/\\/g, '/');
         const encodedPath = cleanName.split('/').map(encodeURIComponent).join('/');
-        const videoUrl = `${window.location.origin}/media/compressed/${encodedPath}`;
+
+        const activeOrigin = await getHealthyOrigin();
+        const videoUrl = `${activeOrigin}/media/compressed/${encodedPath}`;
         const basePath = videoUrl.substring(0, videoUrl.lastIndexOf('/'));
+        const universalSwarmId = `${window.location.origin}/media/compressed/${encodedPath}`;
         currentBasePath = basePath;
         spriteCues = [];
 
@@ -389,7 +391,7 @@ export async function setupVideo(filename, startOffset = -1) {
                         ...hlsConfig, 
                         p2p: {
                             core: {
-                                swarmId: videoUrl, 
+                                swarmId: universalSwarmId, 
                                 announceTrackers: [dynamicTrackerUrl],
                                 rtcConfig: {
                                     iceServers: [
@@ -884,44 +886,33 @@ export function reloadVideo(){
     });
 }
 
-export function inspectBuffer() {
-    const v = document.querySelector('video');
-    const currentTime = v.currentTime;
-    const buffers = v.buffered;
-    
-    //console.log(`%c--- BUFFER INSPECTION ---`, 'color: cyan; font-weight: bold;');
-    //console.log(`Playhead is stuck at: ${currentTime.toFixed(2)}s`);
-    
-    if (buffers.length === 0) {
-        //console.log("Buffer is completely empty!");
-        return;
+async function getHealthyOrigin() {
+    const laptopOrigin = window.location.origin;
+    const pcOrigin = 'https://watch-party-edge.duckdns.org';
+
+    // 2:1 Weighting
+    if (Math.random() > 0.33) {
+        return laptopOrigin;
     }
 
-    let foundHole = false;
+    try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 1500);
 
-    for (let i = 0; i < buffers.length; i++) {
-        const start = buffers.start(i);
-        const end = buffers.end(i);
-        //console.log(`Block ${i}: [${start.toFixed(2)}s  -->  ${end.toFixed(2)}s]`);
+        const response = await fetch(`${pcOrigin}/`, {
+            method: 'HEAD',
+            signal: controller.signal
+        });
         
-        // If the playhead is between this block and the next block, we found the hole!
-        if (currentTime >= end && i < buffers.length - 1) {
-            const nextStart = buffers.start(i + 1);
-            const missingSeconds = nextStart - end;
-            //console.log(`%c🚨 DEADLOCK HOLE DETECTED: Missing video from ${end.toFixed(2)}s to ${nextStart.toFixed(2)}s (Gap size: ${missingSeconds.toFixed(2)}s)`, 'color: red; font-weight: bold;');
-            
-            // Calculate which chunk number this is (Assuming 2-second chunks)
-            const missingChunkNum = Math.floor(end / 2);
-            //console.log(`%c👉 The player is desperately waiting for Chunk #${missingChunkNum}`, 'color: yellow;');
-            foundHole = true;
+        clearTimeout(timeoutId);
+
+        if (response.ok || response.status >= 400) {
+            console.log("[LOAD BALANCER] PC Edge Node is ONLINE. Routing user there.");
+            return pcOrigin;
         }
+    } catch (error) {
+        console.warn("[LOAD BALANCER] PC Edge Node is completely offline! Safely failing over to Laptop.");
     }
 
-    if (!foundHole) {
-        if (currentTime >= buffers.end(buffers.length - 1)) {
-            //console.log(`%c🚨 DEADLOCK: Reached the absolute end of the downloaded buffer. Waiting for chunk #${Math.floor(currentTime / 2)}`, 'color: orange; font-weight: bold;');
-        } else {
-            //console.log("%c✅ The playhead is currently safely inside a buffered block.", 'color: green;');
-        }
-    }
+    return laptopOrigin;
 }

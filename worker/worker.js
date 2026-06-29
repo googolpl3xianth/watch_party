@@ -44,7 +44,7 @@ tusServer.on(EVENTS.POST_FINISH, async (req, res, upload) => {
     //console.log(`[SUCCESS] POST_FINISH: ${upload.id}`);
     //console.log(`[TRIGGER] Firing Bash script for: ${uploadedFilePath}`);
 
-    const bashCommand = `bash /app/scripts/convert_videos.sh "${uploadedFilePath}" "${outputFolder}"`;
+    const bashCommand = `bash /app/scripts/convert_video.sh "${uploadedFilePath}" "${outputFolder}"`;
 
     const localSocket = io(`ws://${process.env.SERVER_IP}:3000`, {
         transports: ['websocket'],
@@ -58,7 +58,7 @@ tusServer.on(EVENTS.POST_FINISH, async (req, res, upload) => {
             fileSize: upload.size 
         });
 
-        const workerProcess = spawn('bash', ['/app/scripts/convert_videos.sh', uploadedFilePath, outputFolder]);
+        const workerProcess = spawn('bash', ['/app/scripts/convert_video.sh', uploadedFilePath, outputFolder]);
 
         workerProcess.stdout.on('data', (data) => {
             console.log(`[BASH]: ${data.toString().trim()}`);
