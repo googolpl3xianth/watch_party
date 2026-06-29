@@ -37,6 +37,8 @@ let currentBasePath = "";
 let spriteCues = [];
 export let isSettingUpVideo = false;
 let currentVideoMode = 'none';
+let swarmWatchdog = null;
+let swarmRetryCount = 0;
 
 const wrapper = document.getElementById('video-wrapper');
 const video = document.getElementById('myVideo');
@@ -50,7 +52,9 @@ const playPauseIcon = document.getElementById('play-pause-icon');
 const ccBtn = document.getElementById('subtitle-btn');
 const ccIcon = document.getElementById('cc-icon');
 const muteBtn = document.getElementById('mute-icon');
-const screenBtn = document.getElementById('screen-play-btn')
+const overlay = document.getElementById('video-overlay-state');
+const overlayIcon = document.getElementById('video-overlay-icon');
+const overlayText = document.getElementById('video-overlay-text');
 
 export function setupVideoPlayer() {
     setUpVideoUI();
@@ -184,27 +188,22 @@ export function setupVideoPlayer() {
                         const gapToStart = start - currentTime;
                         const forwardBuffer = end - currentTime;
                         
-                        // SCENARIO A: The Micro-Gap (Trapped just behind a chunk boundary)
                         if (gapToStart > 0 && gapToStart < 0.5) {
                             console.warn(`[RECOVERY] Micro-gap of ${gapToStart.toFixed(3)}s detected. Nudging forward...`);
                             video.currentTime = start + 0.05; 
                             break; 
                         }
 
-                        // SCENARIO B: The Ghost Pause (Trapped inside a block with plenty of data)
                         if (currentTime >= start && forwardBuffer >= 1.5) {
                             isSafelyBuffered = true;
                         }
                     }
 
-                    // If the browser claims it's buffering, but we proved it has the data...
                     if (isSafelyBuffered && isCurrentlyBuffering) {
                         console.warn(`[RECOVERY] Decoder frozen inside a valid buffer! Kickstarting hardware...`);
                         
-                        // 1. A microscopic nudge forces the C++ decoder to flush and find the Keyframe
                         video.currentTime += 0.001; 
                         
-                        // 2. Forcefully break the room out of the deadlock!
                         isCurrentlyBuffering = false;
                         videoLoader.classList.remove('visible');
                         if (State.hasJoined) clientRecovered();
@@ -281,7 +280,6 @@ export function setupVideoPlayer() {
 
 export function setUpVideoUI(){
     video.controls = false;
-    document.getElementById('screen-play-btn').addEventListener('click', togglePlay);
     document.getElementById('play-pause-btn').addEventListener('click', togglePlay);
     document.getElementById('sync-btn').addEventListener('click', sync);
     document.getElementById('mute-btn').addEventListener('click', toggleMute);
@@ -332,6 +330,8 @@ export async function setupVideo(filename, startOffset = -1) {
     const title = document.getElementById('video-title');
 
     try{
+        if (swarmWatchdog) clearTimeout(swarmWatchdog);
+
         if (hls) { 
 	        if (hls.p2pEngine) {
                 hls.p2pEngine.destroy();
@@ -427,8 +427,23 @@ export async function setupVideo(filename, startOffset = -1) {
                         }
                     });
 
+                    swarmWatchdog = setTimeout(() => {
+                        if (connectedPeers.size === 0 && !window.isHotSwapping) {
+                            if (swarmRetryCount < 2) {
+                                swarmRetryCount++;
+                                console.warn(`[P2P WATCHDOG] Stranded! Hot-swapping... (Attempt ${swarmRetryCount}/2)`);
+                                reloadVideo(); 
+                            } else {
+                                console.warn("[P2P WATCHDOG] Swarm unreachable. Falling back to dedicated server.");
+                                updateP2PStatus(false); 
+                            }
+                        }
+                    }, 12000);
+
                     hls.p2pEngine.addEventListener("onPeerConnect", (params) => {
                         //console.log("%c[P2P SWARM] 🟢 PEER CONNECTED! ID:", "color: lime; font-weight: bold;", params.peerId);
+                        clearTimeout(swarmWatchdog);
+                        swarmRetryCount = 0;
                         connectedPeers.add(params.peerId);
                         if (connectedPeers.size === 1) {
                             updateP2PStatus(true);
@@ -651,11 +666,16 @@ export function executeSync(data) {
             if (e.name !== 'AbortError') console.error("Playback failed:", e);
         });
         videoLoader.classList.remove('visible');
+        overlay.classList.add('hidden');
     } else if (data.type === 'pause') {
         video.pause();
+        overlay.classList.remove('hidden');
+        overlayText.innerText = 'Paused by Host';
     } else if (data.type === 'buffer') {
-        videoLoader.classList.add('visible');
         video.pause();
+        videoLoader.classList.add('visible');
+        overlay.classList.remove('hidden');
+        overlayText.innerText = 'Waiting for players to buffer...';
     }
 }
 
@@ -677,10 +697,9 @@ export function changeQuality(levelIndex){
 
 function resetIdleTimer() {
     wrapper.classList.remove('is-idle');
-    screenBtn.classList.remove('is-idle');
     clearTimeout(idleTimer);
     idleTimer = setTimeout(() => {
-        if (!video.paused) wrapper.classList.add('is-idle'); screenBtn.classList.add('is-idle');
+        if (!video.paused) wrapper.classList.add('is-idle');
     }, 2000);
 }
 

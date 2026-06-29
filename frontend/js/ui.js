@@ -1,6 +1,6 @@
 // js/ui.js
 import { State } from './state.js';
-import { socket, createRoom, requestChange, updateUser} from './network.js'
+import { socket, createRoom, requestChange, updateUser, kickUser } from './network.js'
 import { joinVideo } from './video.js'
 import { pingWorker } from './upload.js'
 
@@ -50,6 +50,13 @@ export function setupRoomUI() {
     uploadBtn.addEventListener('click', openUpload);
 
     userCountBtn.addEventListener('click', getUserList);
+    document.getElementById('kick-btn').addEventListener('click', (event) => {
+        if (confirm("Are you sure you want to kick this user?")) {
+            const targetId = userMenu.getAttribute('data-target-id');
+            kickUser(targetId);
+            userMenu.classList.remove('visible');
+        }
+    });
     document.getElementById('change-role-btn').addEventListener('click', (event) => {getRoleList(event)});
     document.getElementById('role-change-host').addEventListener('click', () => {submitRoleChange('host')});
     document.getElementById('role-change-admin').addEventListener('click', () => {submitRoleChange('admin')});
@@ -78,6 +85,7 @@ export function setupRoomUI() {
 
             const renameBtn = document.getElementById('rename-btn');
             const changeRoleBtn = document.getElementById('change-role-btn');
+            const kickBtn = document.getElementById('kick-btn');
             if (targetSocketId === socket.id || State.sync_perm) {
                 renameBtn.style.display = 'block';
             } else {
@@ -86,8 +94,14 @@ export function setupRoomUI() {
             if ((targetSocketId === socket.id && State.sync_perm) || State.isHost) {
                 //console.log(`${isHost}`);
                 changeRoleBtn.style.display = 'block';
+                if (State.isHost){
+                    kickBtn.style.display = 'block'
+                } else {
+                    kickBtn.style.display = 'none'
+                }
             } else {
                 changeRoleBtn.style.display = 'none';
+                kickBtn.style.display = 'none'
                 //console.log(`${changeRoleBtn.style.display}`);
             }
 

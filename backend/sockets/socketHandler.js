@@ -1,4 +1,4 @@
-// socketHandler.js
+// /backend/sockets/socketHandler.js
 const registerRoomHandlers = require('./roomHandler');
 const registerVideoHandlers = require('./videoHandler');
 

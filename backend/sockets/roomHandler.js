@@ -1,3 +1,4 @@
+// /backend/sockets/roomHandler.js
 const { activeRooms, creationSpamFilter, roomSpamTimer } = require('../store');
 const { sanitize, checkFileSubtitles, deleteRoomVideo } = require('../utils/utils');
 const db = require('../db/queries');
@@ -215,6 +216,18 @@ module.exports = function(io, socket) {
         }
     });
 
+    socket.on('request-kick', (targetSocketId) => {
+        const room = activeRooms[socket.data.currentRoomId];
+        if (room && room.host === socket.id && targetSocketId) {
+            io.to(targetSocketId).emit('kicked-from-room');
+            
+            const targetSocket = io.sockets.sockets.get(targetSocketId);
+            if (targetSocket) {
+                targetSocket.disconnect(true);
+            }
+        }
+    });
+
     socket.on('disconnect', () => {
         const roomToCleanup = socket.data.currentRoomId;
         if (roomToCleanup && activeRooms[roomToCleanup]) {
@@ -266,3 +279,5 @@ module.exports = function(io, socket) {
         }
     });
 };
+
+module.exports.SWARM_THRESHOLD = SWARM_THRESHOLD;

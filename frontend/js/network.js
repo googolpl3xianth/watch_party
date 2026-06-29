@@ -54,6 +54,19 @@ export function initializeNetwork(){
             socket.emit('join-room', roomId);
         }
     });
+
+    socket.on('kicked-from-room', () => {
+        if (window.hls && window.hls.p2pEngine) {
+            window.hls.p2pEngine.destroy();
+        }
+        
+        if (window.hls) {
+            window.hls.destroy();
+        }
+
+        alert("You have been removed from the room by the Host.");
+        window.location.href = '/';
+    });
 }
 
 function setupSocketUI(){
@@ -192,6 +205,12 @@ export function joinRoom(){
 
 export function checkSubtitles(filename, callback) {
     socket.emit('check-subtitles', filename, callback);
+}
+
+export function kickUser(targetId) {
+    if (State.isHost) {
+        socket.emit('request-kick', targetId);
+    }
 }
 
 // UI logic
