@@ -14,7 +14,7 @@ BASE_NAME=$(basename "$INPUT_PATH" | sed 's/\(.*\)\..*/\1/')
 
 TARGET_AUDIO_LANG="jpn"
 TARGET_SUB_LANG="eng"
-CHUNK_SIZE="2"
+CHUNK_SIZE="6"
 
 # === 0. SANITY CHECK ===
 if [ ! -f "$INPUT_PATH" ]; then
@@ -42,17 +42,24 @@ if [ ! -f "master.m3u8" ]; then
 
     # Probe and Encode Video
     ffmpeg -fflags +genpts -i "$INPUT_PATH" \
-    -vf "scale=1920:-2,format=yuv420p" \
-    -c:v libx264 -preset fast -profile:v high -level 4.1 \
-    -b:v 8000k -maxrate:v 9000k -bufsize:v 18000k \
-    -g 48 -no-scenecut 1 \
-    -map 0:v:0 -map "$AUDIO_MAP" -c:a aac -b:a 192k -ac 2 \
+    -filter_complex "[0:v:0]split=3[v1][v2][v3]; [v1]scale=1920:-2,format=yuv420p[v1out]; [v2]scale=1280:-2,format=yuv420p[v2out]; [v3]scale=854:-2,format=yuv420p[v3out]" \
+    -map "[v1out]" -map "$AUDIO_MAP" \
+    -map "[v2out]" -map "$AUDIO_MAP" \
+    -map "[v3out]" -map "$AUDIO_MAP" \
+    -c:v libx264 -preset fast -crf 23 -b:v 0 \
+    -g 144 -no-scenecut 1 \
+    -maxrate:v:0 8000k -bufsize:v:0 16000k \
+    -maxrate:v:1 5000k -bufsize:v:1 10000k \
+    -maxrate:v:2 2500k -bufsize:v:2 5000k \
+    -c:a aac -b:a 192k -ac 2 \
     -fps_mode cfr -max_muxing_queue_size 1024 \
     -f hls -hls_time "$CHUNK_SIZE" -hls_playlist_type vod -hls_segment_type fmp4 \
     -avoid_negative_ts make_non_negative \
-    -hls_segment_filename "chunk_%03d.m4s" \
-    -hls_fmp4_init_filename "init.mp4" \
-    "master.m3u8"
+    -var_stream_map "v:0,a:0,name:1080p v:1,a:1,name:720p v:2,a:2,name:480p" \
+    -hls_segment_filename "%v_chunk_%03d.m4s" \
+    -hls_fmp4_init_filename "%v_init.mp4" \
+    -master_pl_name "master.m3u8" \
+    "%v_playlist.m3u8"
 else
     echo "  -> [SKIPPED] Video streams already converted."
 fi

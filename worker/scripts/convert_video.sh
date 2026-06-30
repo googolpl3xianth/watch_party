@@ -14,7 +14,7 @@ BASE_NAME=$(basename "$INPUT_PATH" | sed 's/\(.*\)\..*/\1/')
 
 TARGET_AUDIO_LANG="jpn"
 TARGET_SUB_LANG="eng"
-CHUNK_SIZE="2"
+CHUNK_SIZE="6"
 
 # === 0. SANITY CHECK ===
 if [ ! -f "$INPUT_PATH" ]; then
@@ -43,9 +43,9 @@ if [ ! -f "master.m3u8" ]; then
     # Probe and Encode Video
     ffmpeg -fflags +genpts -i "$INPUT_PATH" \
     -vf "scale=1920:-2,format=yuv420p" \
-    -c:v h264_nvenc -profile:v high -level 4.1 \
-    -b:v 8000k -maxrate:v 9000k -bufsize:v 18000k \
-    -g 48 -no-scenecut 1 \
+    -c:v h264_nvenc -preset p4 -profile:v high -level 4.1\
+    -rc vbr -cq 26 -b:v 0 -maxrate:v 8000k -bufsize:v 16000k \
+    -g 144 -no-scenecut 1 \
     -map 0:v:0 -map "$AUDIO_MAP" -c:a aac -b:a 192k -ac 2 \
     -fps_mode cfr -max_muxing_queue_size 1024 \
     -f hls -hls_time "$CHUNK_SIZE" -hls_playlist_type vod -hls_segment_type fmp4 \

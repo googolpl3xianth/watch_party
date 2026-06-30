@@ -16,7 +16,7 @@ $destDir = "X:\"
 
 $targetAudioLang = "jpn"
 $targetSubLang   = "eng"
-$chunkSize = 2 # in secs
+$chunkSize = 6 # in secs
 
 if (-not (Test-Path -Path $destDir)) {
     New-Item -ItemType Directory -Path $destDir | Out-Null
@@ -66,25 +66,27 @@ foreach ($vid in $videoFiles) {
             Write-Host "    -> Target audio ($targetAudioLang) missing. Falling back to default track." -ForegroundColor Yellow
         }
 
-        $segmentFileName = "chunk_%03d.m4s"
-        $initFileName = "initv.mp4"
-
         $ffmpegArgs = @(
             "-loglevel", "warning",
             "-fflags", "+genpts",   
             "-i", "`"$inputPath`"",
 
-            "-vf", "scale=1920:-2,format=yuv420p",
+            "-filter_complex", "`"[0:v:0]split=3[v1][v2][v3];[v1]scale=1920:-2,format=yuv420p[v1out];[v2]scale=1280:-2,format=yuv420p[v2out];[v3]scale=854:-2,format=yuv420p[v3out]`"",
 
-            "-c:v", "h264_nvenc",
-            "-profile:v", "high", "-level", "4.1",
-            "-b:v", "8000k", "-maxrate:v", "9000k", "-bufsize:v", "18000k",
-            "-g", "48", "-no-scenecut", "1",
+            "-map", "`"[v1out]`"", "-map", "$audioMap",
+            "-map", "`"[v2out]`"", "-map", "$audioMap",
+            "-map", "`"[v3out]`"", "-map", "$audioMap",
 
+            "-c:v", "h264_nvenc", "-preset", "p4",
+            "-rc", "vbr", "-cq", "26", "-b:v", "0",
+            "-g", "144", "-no-scenecut", "1",
             "-flags", "+global_header",
 
-            "-map", "0:v:0",
-            "-map", "$audioMap", "-c:a", "aac", "-b:a", "192k", "-ac", "2",
+            "-maxrate:v:0", "8000k", "-bufsize:v:0", "16000k",
+            "-maxrate:v:1", "5000k", "-bufsize:v:1", "10000k",
+            "-maxrate:v:2", "2500k", "-bufsize:v:2", "5000k",
+
+            "-c:a", "aac", "-b:a", "192k", "-ac", "2",
 
             "-fps_mode", "cfr",
             "-video_track_timescale", "90000",
@@ -95,9 +97,11 @@ foreach ($vid in $videoFiles) {
             "-hls_segment_type", "fmp4",
             "-avoid_negative_ts", "make_non_negative",
             
-            "-hls_segment_filename", "`"$segmentFileName`"",
-            "-hls_fmp4_init_filename", "`"$initFileName`"",
-            "`"master.m3u8`""
+            "-var_stream_map", "`"v:0,a:0,name:1080p v:1,a:1,name:720p v:2,a:2,name:480p`"",
+            "-hls_segment_filename", "`"%v_chunk_%03d.m4s`"",
+            "-hls_fmp4_init_filename", "`"%v_init.mp4`"",
+            "-master_pl_name", "`"master.m3u8`"",
+            "`"%v_playlist.m3u8`""
         )
             
         $ffCommand = "ffmpeg " + ($ffmpegArgs -join " ")

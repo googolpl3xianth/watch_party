@@ -8,19 +8,19 @@ import { emitSync, sync, checkSubtitles, clientBuffering, clientRecovered, emitQ
 const hlsConfig = {
     startLevel: 0,
     capLevelToPlayerSize: true,
-    maxBufferLength: 30, 
-    maxMaxBufferLength: 60,
+    maxBufferLength: 60, 
+    maxMaxBufferLength: 120,
     abrEwmaDefaultEstimate: 500000, 
     abrBandWidthFactor: 0.6, 
     maxStarvationDelay: 2,
     enableWorker: true,
     lowLatencyMode: false,
     
-    fragLoadingTimeOut: 15000, 
-    manifestLoadingTimeOut: 10000,
-    levelLoadingTimeOut: 10000,
+    fragLoadingTimeOut: 3000, 
+    manifestLoadingTimeOut: 3000,
+    levelLoadingTimeOut: 3000,
     fragLoadingMaxRetry: 2, 
-    fragLoadingRetryDelay: 1000,
+    fragLoadingRetryDelay: 500,
 }
 const CONFIG = {
     SYNC_THRESHOLD_SECONDS: 1.5,
@@ -449,6 +449,9 @@ export async function setupVideo(filename, startOffset = -1) {
                         connectedPeers.add(params.peerId);
                         if (connectedPeers.size === 1) {
                             updateP2PStatus(true);
+                            if (hls.currentLevel !== State.targetQuality) {
+                                hls.currentLevel = State.targetQuality;
+                            }
                         }
                     });
 
@@ -456,6 +459,10 @@ export async function setupVideo(filename, startOffset = -1) {
                         connectedPeers.delete(params.peerId);
                         if (connectedPeers.size === 0) {
                             updateP2PStatus(false);
+
+                            if (hls.currentLevel !== -1) {
+                                hls.currentLevel = -1;
+                            }
                         }
                     });
 
@@ -492,14 +499,9 @@ export async function setupVideo(filename, startOffset = -1) {
 
                             let labelName = `${level.height}p`;
 
-                            if (level.width === 1920) {
-                                const mbps = Math.round(level.bitrate / 1000000); 
-                                labelName = `1080p (${mbps} Mbps)`;
-                                labelName = `1080p (${mbps} Mbps)`;
-                                labelName = `1080p (${mbps} Mbps)`;
-                            }
+                            if (level.width === 1920)      labelName = `1080p`;
                             else if (level.width === 1280) labelName = "720p";
-                            else if (level.width === 854) labelName = "480p";
+                            else if (level.width === 854)  labelName = "480p";
 
                             option.textContent = labelName; 
                             option.style.color = 'black'; 
